@@ -41,6 +41,10 @@ extern crate std;
 mod civil;
 mod datetime;
 mod error;
+mod lookups;
+mod parsers;
+mod relmath;
+mod tokenizer;
 mod tz;
 
 pub use datetime::DateTime;
@@ -85,7 +89,10 @@ fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
         return Ok(m);
     }
 
-    Err(Error::UnableToParse)
+    // Token-based parser (relative expressions, weekdays, month names, times).
+    let toks = tokenizer::tokenize(trimmed)?;
+    let mut parser = parsers::token_parser::Parser::new(trimmed, toks.as_slice(), base);
+    parser.parse()
 }
 
 /// Parse `@<unix>[.fraction] [timezone]`. Returns `Ok(None)` if the input is not
