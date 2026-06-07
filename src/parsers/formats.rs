@@ -41,6 +41,20 @@ pub(crate) fn tail_from<'a>(whole: &'a str, part: &str) -> &'a str {
     &whole[off..]
 }
 
+/// Collect whitespace-separated fields into `out`, returning the count (capped
+/// at `out.len()`). Equivalent to Go's `strings.Fields` for our purposes.
+pub(crate) fn collect_fields<'a>(s: &'a str, out: &mut [&'a str]) -> usize {
+    let mut n = 0;
+    for f in s.split_whitespace() {
+        if n >= out.len() {
+            break;
+        }
+        out[n] = f;
+        n += 1;
+    }
+    n
+}
+
 /// Split `s` on `sep` into exactly three parts (requires exactly two separators).
 fn split3(s: &str, sep: u8) -> Option<(&str, &str, &str)> {
     let mut it = s.match_indices(sep as char);

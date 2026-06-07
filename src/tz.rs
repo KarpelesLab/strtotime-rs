@@ -22,7 +22,7 @@ pub enum Tz {
     Fixed(i32),
     /// A named IANA zone with full transition/DST data.
     #[cfg(feature = "iana")]
-    Iana(timezone_data::Zone<'static>),
+    Iana(timezone_data::Zone),
 }
 
 impl core::fmt::Debug for Tz {

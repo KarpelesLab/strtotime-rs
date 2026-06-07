@@ -33,7 +33,7 @@ fn parse_hms3(s: &str) -> Option<(i64, i64, i64)> {
 }
 
 /// `YYYY-M-D HH:MM:SS timezone`. Mirrors `parseISODateTimeWithTimezone`.
-fn parse_iso_datetime_with_tz(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso_datetime_with_tz(s: &str, base: Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     if date_part.bytes().filter(|b| *b == b'-').count() != 2 {

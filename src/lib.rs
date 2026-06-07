@@ -109,6 +109,11 @@ fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
         return parse_compound(trimmed, base);
     }
 
+    // Ordinal date ("26th Nov").
+    if let Some(m) = parsers::extended::parse_ordinal_date(trimmed, base) {
+        return Ok(m);
+    }
+
     // Token-based parser (relative expressions, weekdays, month names, times).
     let toks = tokenizer::tokenize(trimmed)?;
     let mut parser = parsers::token_parser::Parser::new(trimmed, toks.as_slice(), base);
@@ -196,7 +201,7 @@ fn weekday_prefix_reparse(s: &str, base: Moment) -> Option<Moment> {
 
 /// Strip a leading weekday name (full or 3-letter), returning the remainder and
 /// the day number (0=Sunday). Returns `None` if no weekday prefix.
-fn strip_weekday_prefix(s: &str) -> Option<(&str, i64)> {
+pub(crate) fn strip_weekday_prefix(s: &str) -> Option<(&str, i64)> {
     const FULL: &[(&str, i64)] = &[
         ("sunday", 0),
         ("monday", 1),
@@ -276,6 +281,12 @@ fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
     let n = normalize_ops(s, &mut buf).ok_or(Error::TooLong)?;
     let nb = n.as_bytes();
     let is_op = |c: u8| c == b'+' || c == b'-';
+
+    // A trailing operator means an empty final operand, which PHP/Go reject
+    // ("2023-", "next year +").
+    if matches!(nb.last(), Some(&b'+') | Some(&b'-')) {
+        return Err(Error::UnableToParse);
+    }
 
     // First operator at index > 0 splits the leading part.
     let mut i = 1;
