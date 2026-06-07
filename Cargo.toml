@@ -21,10 +21,10 @@ iana = ["dep:timezone-data"]
 std = []
 
 [dependencies]
-timezone-data = { path = "../timezone-data-rs", optional = true }
+timezone-data = { version = "0.2", path = "../timezone-data-rs", optional = true }
 
 [dev-dependencies]
-timezone-data = { path = "../timezone-data-rs" }
+timezone-data = { version = "0.2", path = "../timezone-data-rs" }
 
 [lints.rust]
 unsafe_code = "forbid"
