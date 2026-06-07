@@ -12,16 +12,16 @@ use crate::parsers::token_parser::is_valid_date;
 use crate::tz::{self, Moment, Tz};
 
 /// Build a moment from civil wall fields in a zone.
-fn mk(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Moment {
+pub(crate) fn mk(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Moment {
     Moment::from_civil(tz, Civil::new(y, mo, d, h, mi, s))
 }
 
 /// Non-empty and all ASCII digits.
-fn is_all_digits(s: &str) -> bool {
+pub(crate) fn is_all_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn atoi(s: &str) -> i64 {
+pub(crate) fn atoi(s: &str) -> i64 {
     let mut n = 0i64;
     for b in s.bytes() {
         n = n * 10 + (b - b'0') as i64;
@@ -32,6 +32,13 @@ fn atoi(s: &str) -> i64 {
 /// Count occurrences of byte `sep` in `s`.
 fn count(s: &str, sep: u8) -> usize {
     s.bytes().filter(|b| *b == sep).count()
+}
+
+/// The substring of `whole` starting where `part` (a subslice of `whole`)
+/// begins. Used to recover an original-string tail after `split_whitespace`.
+pub(crate) fn tail_from<'a>(whole: &'a str, part: &str) -> &'a str {
+    let off = part.as_ptr() as usize - whole.as_ptr() as usize;
+    &whole[off..]
 }
 
 /// Split `s` on `sep` into exactly three parts (requires exactly two separators).
@@ -53,47 +60,48 @@ fn split3(s: &str, sep: u8) -> Option<(&str, &str, &str)> {
 /// `formatParsers` list in `strtotime.go`. Parsers from later phases are added
 /// in their correct positions as they land.
 pub fn pipeline(s: &str, base: Moment) -> Option<Moment> {
+    use crate::parsers::{extended as ext, iso8601, tzfmt};
+
     let first = s.as_bytes().first().copied().unwrap_or(0);
     let digit = first.is_ascii_digit();
 
-    if digit {
-        if let Some(m) = parse_european(s, base) {
-            return Some(m);
-        }
+    macro_rules! attempt {
+        ($cond:expr, $call:expr) => {
+            if $cond {
+                if let Some(m) = $call {
+                    return Some(m);
+                }
+            }
+        };
     }
-    if s.starts_with("0000-00-00") {
-        if let Some(m) = parse_zero_date(s, base) {
-            return Some(m);
-        }
-    }
-    if first == b'-' || first == b'+' {
-        if let Some(m) = parse_signed_year(s, base) {
-            return Some(m);
-        }
-    }
-    if let Some(m) = parse_datetime(s, base) {
-        return Some(m);
-    }
-    if let Some(m) = parse_iso(s, base) {
-        return Some(m);
-    }
-    if digit {
-        if let Some(m) = parse_large_year_as_time(s, base) {
-            return Some(m);
-        }
-        if let Some(m) = parse_year_month(s, base) {
-            return Some(m);
-        }
-        if let Some(m) = parse_slash(s, base) {
-            return Some(m);
-        }
-        if let Some(m) = parse_us(s, base) {
-            return Some(m);
-        }
-        if let Some(m) = parse_short_year_us_military(s, base) {
-            return Some(m);
-        }
-    }
+
+    attempt!(digit, parse_european(s, base));
+    attempt!(s.starts_with("front of ") || s.starts_with("back of "), ext::parse_front_back_of(s, base));
+    attempt!(digit, ext::parse_roman_numeral_date(s, base));
+    attempt!(s.starts_with("0000-00-00"), parse_zero_date(s, base));
+    attempt!(first == b'-' || first == b'+', parse_signed_year(s, base));
+    attempt!(true, iso8601::parse_iso8601(s, base));
+    attempt!(true, parse_datetime(s, base));
+    attempt!(true, tzfmt::parse_with_timezone(s, base));
+    attempt!(true, parse_iso(s, base));
+    attempt!(digit, parse_large_year_as_time(s, base));
+    attempt!(digit, parse_year_month(s, base));
+    attempt!(digit, parse_slash(s, base));
+    attempt!(digit, parse_us(s, base));
+    attempt!(digit, ext::parse_us_date_with_time(s, base));
+    attempt!(digit, parse_short_year_us_military(s, base));
+    attempt!(digit, ext::parse_compact_timestamp(s, base));
+    attempt!(true, ext::parse_compact_time_formats(s, base));
+    attempt!(true, ext::parse_month_name_format(s, base));
+    attempt!(digit, ext::parse_http_log_format(s, base));
+    attempt!(true, ext::parse_datetime_tz_relative(s, base));
+    attempt!(true, ext::parse_date_with_tz(s, base));
+    attempt!(true, ext::parse_day_month_year(s, base));
+    attempt!(true, ext::parse_month_year_only(s, base));
+    attempt!(digit, ext::parse_time_before_date(s, base));
+    attempt!(true, ext::parse_month_day_time_year(s, base));
+    attempt!(true, ext::parse_first_last_day_of_date(s, base));
+    attempt!(true, ext::parse_numbered_weekday(s, base));
 
     None
 }
