@@ -89,10 +89,217 @@ fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
         return Ok(m);
     }
 
+    // Ordered format parsers.
+    if let Some(m) = parsers::formats::pipeline(trimmed, base) {
+        return Ok(m);
+    }
+
+    // Date followed by a relative adjustment: "2023-05-30 -1 month".
+    if let Some(m) = parse_date_with_relative_time(trimmed, base) {
+        return Ok(m);
+    }
+
+    // Leading weekday name stripped and reparsed: "Fri Aug 20 1993 23:59:59".
+    if let Some(m) = weekday_prefix_reparse(trimmed, base) {
+        return Ok(m);
+    }
+
+    // Compound expression: a part joined by + / - in the middle.
+    if is_compound_expression(trimmed) {
+        return parse_compound(trimmed, base);
+    }
+
     // Token-based parser (relative expressions, weekdays, month names, times).
     let toks = tokenizer::tokenize(trimmed)?;
     let mut parser = parsers::token_parser::Parser::new(trimmed, toks.as_slice(), base);
     parser.parse()
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration helpers (recurse into `eval`)
+// ---------------------------------------------------------------------------
+
+/// Does `s` look like a date format (`A-B-C`, `A/B/C`, or `A.B.C`, all digits)?
+fn looks_like_date(s: &str) -> bool {
+    for sep in [b'-', b'/', b'.'] {
+        if s.bytes().filter(|b| *b == sep).count() == 2 {
+            let mut ok = true;
+            let mut nonempty = 0;
+            for part in s.split(sep as char) {
+                if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+                    ok = false;
+                    break;
+                }
+                nonempty += 1;
+            }
+            if ok && nonempty == 3 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Parse "DATE rest" where DATE is a recognized date and `rest` is a relative
+/// adjustment. Mirrors `parseDateWithRelativeTime` + `splitDateAndRest`.
+fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
+    let sp = s.find(' ')?;
+    let date_part = &s[..sp];
+    let rest = s[sp + 1..].trim();
+    if rest.is_empty() || !looks_like_date(date_part) {
+        return None;
+    }
+
+    let date = eval(date_part, base).ok()?;
+
+    // Special case: subtracting one month from a month-end date clamps to the
+    // previous month's last day.
+    if rest.eq_ignore_ascii_case("-1 month") {
+        let w = date.wall();
+        if w.day as i64 == civil::days_in_month(w.year, w.month as i64) {
+            let last_prev = civil::days_from_civil(w.year, w.month as i64, 1) - 1;
+            let (py, pmo, pd) = civil::civil_from_days(last_prev);
+            return Some(Moment::from_civil(
+                base.tz,
+                Civil::new(py, pmo, pd, w.hour as i64, w.minute as i64, w.second as i64),
+            ));
+        }
+    }
+
+    eval(rest, Moment { unix: date.unix, tz: base.tz }).ok()
+}
+
+/// Strip a leading weekday name and reparse the rest, advancing to the named
+/// weekday if it doesn't match. Mirrors `tryWeekdayPrefixReparse` +
+/// `stripWeekdayPrefix`.
+fn weekday_prefix_reparse(s: &str, base: Moment) -> Option<Moment> {
+    let (rest, day_num) = strip_weekday_prefix(s)?;
+    let rt = rest.trim();
+    let lower3 = |p: &str| rt.len() >= p.len() && rt[..p.len()].eq_ignore_ascii_case(p);
+    if lower3("next ") || lower3("last ") || lower3("this ") {
+        return None;
+    }
+
+    let mut t = eval(rest, base).ok()?;
+    if day_num >= 0 {
+        let wd = t.wall().weekday() as i64;
+        if wd != day_num {
+            let mut days = (day_num - wd + 7) % 7;
+            if days == 0 {
+                days = 7;
+            }
+            t = relmath::apply_offset(t, days, lookups::Unit::Day);
+        }
+    }
+    Some(t)
+}
+
+/// Strip a leading weekday name (full or 3-letter), returning the remainder and
+/// the day number (0=Sunday). Returns `None` if no weekday prefix.
+fn strip_weekday_prefix(s: &str) -> Option<(&str, i64)> {
+    const FULL: &[(&str, i64)] = &[
+        ("sunday", 0),
+        ("monday", 1),
+        ("tuesday", 2),
+        ("wednesday", 3),
+        ("thursday", 4),
+        ("friday", 5),
+        ("saturday", 6),
+    ];
+    for (name, dn) in FULL {
+        if s.len() > name.len() && s[..name.len()].eq_ignore_ascii_case(name) {
+            let r = s[name.len()..].trim_start_matches([',', ' ']);
+            if !r.is_empty() {
+                return Some((r, *dn));
+            }
+        }
+    }
+    if s.len() > 3 {
+        if let Some(dn) = lookups::day_of_week(&s[..3]) {
+            let r = s[3..].trim_start_matches([',', ' ']);
+            if !r.is_empty() {
+                return Some((r, dn as i64));
+            }
+        }
+    }
+    None
+}
+
+/// Normalize spaces around `+`/`-` into `buf`, returning the normalized `&str`.
+/// Mirrors the Go reference's `strings.NewReplacer(" + ","+", " - ","-", "+ ","+", "- ","-")`.
+fn normalize_ops<'b>(s: &str, buf: &'b mut [u8]) -> Option<&'b str> {
+    const PATS: &[(&str, u8)] = &[(" + ", b'+'), (" - ", b'-'), ("+ ", b'+'), ("- ", b'-')];
+    let sb = s.as_bytes();
+    let mut i = 0;
+    let mut n = 0;
+    'outer: while i < sb.len() {
+        for (pat, rep) in PATS {
+            if sb[i..].starts_with(pat.as_bytes()) {
+                if n >= buf.len() {
+                    return None;
+                }
+                buf[n] = *rep;
+                n += 1;
+                i += pat.len();
+                continue 'outer;
+            }
+        }
+        if n >= buf.len() {
+            return None;
+        }
+        buf[n] = sb[i];
+        n += 1;
+        i += 1;
+    }
+    core::str::from_utf8(&buf[..n]).ok()
+}
+
+/// A compound expression contains `+`/`-` joining parts (not just a leading
+/// sign). Mirrors `isCompoundExpression`.
+fn is_compound_expression(s: &str) -> bool {
+    let mut buf = [0u8; 512];
+    let Some(n) = normalize_ops(s, &mut buf) else {
+        return false;
+    };
+    let b = n.as_bytes();
+    let has_plus = b.contains(&b'+');
+    let has_minus = b.contains(&b'-');
+    let pre_plus = b.first() == Some(&b'+');
+    let pre_minus = b.first() == Some(&b'-');
+    (has_plus && !pre_plus) || (has_minus && !pre_minus)
+}
+
+/// Evaluate a compound expression by chaining each `±part` onto the running
+/// result. Mirrors `parseCompoundExpression`.
+fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
+    let mut buf = [0u8; 512];
+    let n = normalize_ops(s, &mut buf).ok_or(Error::TooLong)?;
+    let nb = n.as_bytes();
+    let is_op = |c: u8| c == b'+' || c == b'-';
+
+    // First operator at index > 0 splits the leading part.
+    let mut i = 1;
+    while i < nb.len() && !is_op(nb[i]) {
+        i += 1;
+    }
+    if i >= nb.len() {
+        return Err(Error::UnableToParse);
+    }
+
+    let mut result = eval(&n[..i], base)?;
+    let mut start = i;
+    loop {
+        let mut j = start + 1;
+        while j < nb.len() && !is_op(nb[j]) {
+            j += 1;
+        }
+        result = eval(&n[start..j], Moment { unix: result.unix, tz: base.tz })?;
+        if j >= nb.len() {
+            break;
+        }
+        start = j;
+    }
+    Ok(result)
 }
 
 /// Parse `@<unix>[.fraction] [timezone]`. Returns `Ok(None)` if the input is not

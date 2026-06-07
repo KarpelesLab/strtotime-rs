@@ -55,12 +55,12 @@ impl Tz {
     pub fn resolve_local(&self, wall: i64) -> (i64, i32) {
         match self {
             Tz::Utc => (wall, 0),
-            Tz::Fixed(o) => (wall - *o as i64, *o),
+            Tz::Fixed(o) => (wall.wrapping_sub(*o as i64), *o),
             #[cfg(feature = "iana")]
             Tz::Iana(z) => {
                 let off1 = z.lookup(wall).offset;
-                let off2 = z.lookup(wall - off1 as i64).offset;
-                (wall - off2 as i64, off2)
+                let off2 = z.lookup(wall.wrapping_sub(off1 as i64)).offset;
+                (wall.wrapping_sub(off2 as i64), off2)
             }
         }
     }

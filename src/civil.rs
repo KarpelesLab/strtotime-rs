@@ -37,7 +37,9 @@ pub const fn civil_from_days(z: i64) -> (i64, i64, i64) {
 }
 
 /// Unix timestamp (seconds) for a civil UTC date-time. Components may be any
-/// `i64`; they are combined directly (PHP-compatible overflow).
+/// `i64`; they are combined with two's-complement wrapping so extreme years
+/// overflow exactly as PHP's `int64` arithmetic does (e.g. the documented
+/// `i64::MIN` wrap-around cases).
 pub const fn unix_from_civil(
     year: i64,
     month: i64,
@@ -46,7 +48,11 @@ pub const fn unix_from_civil(
     minute: i64,
     second: i64,
 ) -> i64 {
-    days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second
+    days_from_civil(year, month, day)
+        .wrapping_mul(86400)
+        .wrapping_add(hour.wrapping_mul(3600))
+        .wrapping_add(minute.wrapping_mul(60))
+        .wrapping_add(second)
 }
 
 /// Day of week for a day count since the epoch. 0 = Sunday .. 6 = Saturday

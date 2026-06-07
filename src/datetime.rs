@@ -35,7 +35,8 @@ impl DateTime {
             self.hour as i64,
             self.minute as i64,
             self.second as i64,
-        ) - self.offset as i64
+        )
+        .wrapping_sub(self.offset as i64)
     }
 
     /// Day of week, 0 = Sunday .. 6 = Saturday.

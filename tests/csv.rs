@@ -14,7 +14,7 @@
 use strtotime::{strtotime, Tz};
 
 /// Minimum number of success rows that must pass. Raise as formats land.
-const MIN_PASS: usize = 230;
+const MIN_PASS: usize = 455;
 
 fn resolve_tz(tz: &str) -> Tz {
     if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") {

@@ -339,12 +339,12 @@ impl<'a> Parser<'a> {
         } else {
             return None;
         };
-        let start = self.pos;
+        // Like the Go reference, the direction token is consumed even when the
+        // remainder doesn't form a valid unit (no rollback).
         self.pos += 1;
         self.skip_ws();
 
         if !self.is(self.pos, TokType::Str) {
-            self.pos = start;
             return None;
         }
         let unit = self.val(self.pos);
@@ -392,11 +392,9 @@ impl<'a> Parser<'a> {
         match normalize_unit(unit) {
             Some(Unit::Month) => Some(apply_offset(self.result, if is_next { 1 } else { -1 }, Unit::Month)),
             Some(Unit::Year) => Some(apply_offset(self.result, if is_next { 1 } else { -1 }, Unit::Year)),
-            _ => {
-                // Invalid unit after next/last: Go returns (false, err) → not matched.
-                self.pos = start;
-                None
-            }
+            // Invalid unit after next/last: Go returns (false, err) with the
+            // direction+unit already consumed (no rollback).
+            _ => None,
         }
     }
 
@@ -407,6 +405,7 @@ impl<'a> Parser<'a> {
             return None;
         }
         let op = self.val(self.pos);
+        // Multi-char sign operators must contain a '-' ("++" is rejected).
         if op.len() > 1 && !op.contains('-') {
             return None;
         }
@@ -415,34 +414,28 @@ impl<'a> Parser<'a> {
             match c {
                 b'-' => sign = -sign,
                 b'+' => {}
-                _ => return None,
+                _ => return None, // not a sign operator: no advance (matches Go)
             }
         }
-        let start = self.pos;
+        // From here the operator is consumed and not rolled back, so a bare "+"
+        // or "-" advances past the token and leaves the result unchanged — which
+        // is what the compound-expression path relies on.
         self.pos += 1;
 
         if !self.is(self.pos, TokType::Number) {
-            self.pos = start;
             return None;
         }
         let amount = match parse_i64(self.val(self.pos)) {
             Ok(n) => n * sign,
-            Err(_) => {
-                self.pos = start;
-                return None;
-            }
+            Err(_) => return None,
         };
         self.pos += 1;
         self.skip_ws();
 
         if !self.is(self.pos, TokType::Str) {
-            self.pos = start;
             return None;
         }
-        let Some(unit) = normalize_unit(self.val(self.pos)) else {
-            self.pos = start;
-            return None;
-        };
+        let unit = normalize_unit(self.val(self.pos))?;
         self.pos += 1;
         Some(apply_offset(self.result, amount, unit))
     }
