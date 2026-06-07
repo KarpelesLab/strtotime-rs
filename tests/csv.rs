@@ -14,7 +14,7 @@
 use strtotime::{strtotime, Tz};
 
 /// Minimum number of success rows that must pass. Raise as formats land.
-const MIN_PASS: usize = 668;
+const MIN_PASS: usize = 669;
 
 fn resolve_tz(tz: &str) -> Tz {
     if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") {
@@ -164,5 +164,5 @@ fn csv_invalid() {
     }
 
     eprintln!("\nstrtotime CSV invalid: {correct}/{total} correctly rejected");
-    // No floor yet; tightened once parsing is complete.
+    assert_eq!(correct, total, "some inputs PHP rejects were accepted");
 }

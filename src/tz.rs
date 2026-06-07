@@ -58,9 +58,25 @@ impl Tz {
             Tz::Fixed(o) => (wall.wrapping_sub(*o as i64), *o),
             #[cfg(feature = "iana")]
             Tz::Iana(z) => {
-                let off1 = z.lookup(wall).offset;
-                let off2 = z.lookup(wall.wrapping_sub(off1 as i64)).offset;
-                (wall.wrapping_sub(off2 as i64), off2)
+                // Resolve a local wall-clock time to an instant. For an
+                // unambiguous time the offset is self-consistent. Near a
+                // transition we try the second offset; if that is still not
+                // self-consistent the wall time is in a spring-forward gap and
+                // we fall *forward* (PHP behavior) by using the smaller offset.
+                let o0 = z.lookup(wall).offset;
+                let cand0 = wall.wrapping_sub(o0 as i64);
+                let oa0 = z.lookup(cand0).offset;
+                if oa0 == o0 {
+                    return (cand0, o0);
+                }
+                let cand1 = wall.wrapping_sub(oa0 as i64);
+                let oa1 = z.lookup(cand1).offset;
+                if oa1 == oa0 {
+                    return (cand1, oa1);
+                }
+                // Gap: no valid instant maps back to `wall`; fall forward.
+                let off = o0.min(oa0);
+                (wall.wrapping_sub(off as i64), off)
             }
         }
     }
