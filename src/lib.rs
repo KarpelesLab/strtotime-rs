@@ -70,9 +70,49 @@ pub fn strtotime_civil(input: &str, base_unix: i64, tz: Tz) -> Result<DateTime, 
     eval(input, Moment { unix: base_unix, tz }).map(|m| m.wall())
 }
 
-/// Core orchestration: mirrors the Go reference's `StrToTime`. Currently a stub
-/// handling `@timestamp` and the keyword expressions; format parsers and the
-/// token parser are wired in over subsequent phases.
+/// The current Unix timestamp from the system clock. Requires the `std` feature.
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub fn now_unix() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(d) => d.as_secs() as i64,
+        Err(e) => -(e.duration().as_secs() as i64),
+    }
+}
+
+/// Convert a Unix timestamp to a [`std::time::SystemTime`]. Requires `std`.
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub fn system_time_from_unix(unix: i64) -> std::time::SystemTime {
+    use std::time::{Duration, UNIX_EPOCH};
+    if unix >= 0 {
+        UNIX_EPOCH + Duration::from_secs(unix as u64)
+    } else {
+        UNIX_EPOCH - Duration::from_secs(unix.unsigned_abs())
+    }
+}
+
+/// Parse `input` relative to the current system time, in zone `tz`. Requires `std`.
+///
+/// Convenience over [`strtotime`] that supplies [`now_unix`] as the base.
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub fn strtotime_now(input: &str, tz: Tz) -> Result<i64, Error> {
+    strtotime(input, now_unix(), tz)
+}
+
+#[cfg(feature = "std")]
+impl From<DateTime> for std::time::SystemTime {
+    fn from(dt: DateTime) -> Self {
+        system_time_from_unix(dt.unix())
+    }
+}
+
+/// Core orchestration: mirrors the Go reference's `StrToTime`. Runs the unix-`@`
+/// handler, keyword expressions, the ordered format pipeline, the
+/// date+relative / weekday-prefix / compound / ordinal-date fallbacks, and
+/// finally the token parser.
 fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
     let trimmed = input.trim();
     if trimmed.is_empty() {

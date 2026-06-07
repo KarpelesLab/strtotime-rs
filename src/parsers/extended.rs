@@ -3,7 +3,7 @@
 use crate::civil::{days_in_month, weekday_from_days, days_from_civil};
 use crate::lookups::{apply_ampm, day_of_week, month_by_name, normalize_unit, two_digit_year, Unit};
 use crate::parsers::formats::{
-    atoi, collect_fields, is_all_digits, is_valid_time, mk, parse_iso, parse_iso8601_time, tail_from,
+    atoi, collect_fields, is_all_digits, is_valid_time, mk, parse_iso, tail_from,
 };
 use crate::parsers::token_parser::is_valid_date;
 use crate::relmath::apply_offset;
@@ -311,11 +311,11 @@ pub fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
             nf[1] = b;
             nf[2] = c;
             let mut fc = 3;
-            for i in 1..rawn {
+            for &r in &raw[1..rawn] {
                 if fc >= NF {
                     break;
                 }
-                nf[fc] = raw[i];
+                nf[fc] = r;
                 fc += 1;
             }
             fields = nf;
@@ -502,7 +502,9 @@ pub fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
         return None;
     }
 
-    let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
+    let mut hour;
+    let mut minute = 0i64;
+    let mut second = 0i64;
     let mut time_field_end = 1;
 
     if fields[0].contains(':') {
@@ -954,12 +956,11 @@ pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
     let (ordinal, mut is_word, mut idx) = parse_ordinal_prefix(fields, 0)?;
 
     // "+N week(s) ..." — skip the unit after a numeric ordinal.
-    if idx < n {
-        if normalize_unit(fields[idx]) == Some(Unit::Week) {
+    if idx < n
+        && normalize_unit(fields[idx]) == Some(Unit::Week) {
             is_word = true;
             idx += 1;
         }
-    }
 
     if idx >= n {
         return None;
@@ -993,7 +994,7 @@ pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
     }
 
     let now = base.wall();
-    let mut month;
+    let month;
     let mut year;
     let mut relative_years = 0i64;
 

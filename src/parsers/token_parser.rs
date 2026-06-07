@@ -40,10 +40,6 @@ impl<'a> Parser<'a> {
 
     // --- token helpers -----------------------------------------------------
 
-    fn tok(&self, i: usize) -> Option<&Token<'a>> {
-        self.toks.get(i)
-    }
-
     fn typ(&self, i: usize) -> Option<TokType> {
         self.toks.get(i).map(|t| t.typ)
     }
@@ -551,10 +547,8 @@ impl<'a> Parser<'a> {
         if self.pos + 2 >= self.toks.len() {
             return None;
         }
-        if !self.is(self.pos, TokType::Number)
-            || !(self.is(self.pos + 1, TokType::Operator) && self.val(self.pos + 1) == ":")
-            || !self.is(self.pos + 2, TokType::Number)
-        {
+        let colon = self.is(self.pos + 1, TokType::Operator) && self.val(self.pos + 1) == ":";
+        if !(self.is(self.pos, TokType::Number) && colon && self.is(self.pos + 2, TokType::Number)) {
             return None;
         }
         let hour = parse_i64(self.val(self.pos)).ok()?;
@@ -724,10 +718,7 @@ impl<'a> Parser<'a> {
         if !self.is(self.pos, TokType::Str) {
             return None;
         }
-        let Some(dn) = day_of_week(self.val(self.pos)) else {
-            return None;
-        };
-        let dn = dn as i64;
+        let dn = day_of_week(self.val(self.pos))? as i64;
         self.pos += 1;
         self.skip_ws();
 
