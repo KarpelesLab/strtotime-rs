@@ -22,12 +22,12 @@ fn add_date(m: Moment, dy: i64, dmo: i64, dd: i64) -> Moment {
         w.minute as i64,
         w.second as i64,
     );
-    Moment::from_civil(m.tz, c)
+    Moment::from_civil_frac(m.tz, c, m.micros)
 }
 
 /// Add `secs` to the instant directly (duration arithmetic).
 fn add_duration(m: Moment, secs: i64) -> Moment {
-    Moment { unix: m.unix + secs, tz: m.tz }
+    Moment { unix: m.unix + secs, tz: m.tz, micros: m.micros }
 }
 
 /// Add `n` calendar days with PHP DST handling: preserve wall-clock time, but if
@@ -99,5 +99,5 @@ fn add_clock(m: Moment, dh: i64, dmi: i64, ds: i64) -> Moment {
         w.minute as i64 + dmi,
         w.second as i64 + ds,
     );
-    Moment::from_civil(m.tz, c)
+    Moment::from_civil_frac(m.tz, c, m.micros)
 }

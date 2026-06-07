@@ -5,7 +5,7 @@
 //! offsets and named-timezone suffixes.
 
 use crate::civil;
-use crate::parsers::formats::{atoi, is_all_digits, mk, parse_iso, parse_iso8601_time};
+use crate::parsers::formats::{atoi, is_all_digits, mk, mk_frac, parse_iso, parse_iso8601_time};
 use crate::tz::{self, Moment, Tz};
 
 /// Entry point: try week date, then `T` datetime. Mirrors `parseISO8601`.
@@ -52,7 +52,7 @@ fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
         return None;
     }
 
-    let (hour, minute, second, consumed) = parse_iso8601_time(rest)?;
+    let (hour, minute, second, micros, consumed) = parse_iso8601_time(rest)?;
 
     let mut tz = base.tz;
     let tz_rest = rest[consumed..].trim_start_matches(' ');
@@ -70,9 +70,9 @@ fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
     }
 
     if hour == 24 {
-        return Some(mk(tz, year, month, day + 1, 0, minute, second));
+        return Some(mk_frac(tz, year, month, day + 1, 0, minute, second, micros));
     }
-    Some(mk(tz, year, month, day, hour, minute, second))
+    Some(mk_frac(tz, year, month, day, hour, minute, second, micros))
 }
 
 /// `YYYY-Www`, `YYYY-Www-D`, `YYYYWww`, `YYYYWwwD`. Mirrors `parseISOWeekDate`.

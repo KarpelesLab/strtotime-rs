@@ -1,7 +1,7 @@
 //! Public API smoke tests that don't depend on the IANA database, so they run
 //! under any feature combination.
 
-use strtotime::{strtotime, strtotime_civil, Tz};
+use strtotime::{strtotime, strtotime_civil, strtotime_micros, Tz};
 
 #[test]
 fn absolute_utc() {
@@ -35,6 +35,23 @@ fn civil_fields() {
     assert_eq!(dt.offset, 2 * 3600);
     // unix() must round-trip back to the parsed timestamp.
     assert_eq!(dt.unix(), strtotime("2008-07-01 22:35:17", 0, Tz::Fixed(2 * 3600)).unwrap());
+}
+
+#[test]
+fn microseconds() {
+    // strtotime() truncates to whole seconds (PHP parity)...
+    assert_eq!(strtotime("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap(), 1214951717);
+    // ...while the civil result and *_micros retain the fraction.
+    let dt = strtotime_civil("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap();
+    assert_eq!(dt.micros, 20_000);
+    assert_eq!(dt.unix_micros(), 1_214_951_717_020_000);
+    assert_eq!(strtotime_micros("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap(), 1_214_951_717_020_000);
+
+    // Nanosecond input truncates to microseconds; @-fractions are captured.
+    assert_eq!(strtotime_civil("2023-01-15T14:30:45.123456789Z", 0, Tz::Utc).unwrap().micros, 123_456);
+    assert_eq!(strtotime_civil("@1234567890.5", 0, Tz::Utc).unwrap().micros, 500_000);
+    // PHP rejects @-fractions with more than 6 digits.
+    assert!(strtotime("@1.1234567", 0, Tz::Utc).is_err());
 }
 
 #[test]

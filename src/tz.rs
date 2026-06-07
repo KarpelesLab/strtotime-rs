@@ -88,25 +88,37 @@ impl Tz {
 pub(crate) struct Moment {
     pub unix: i64,
     pub tz: Tz,
+    /// Sub-second component in microseconds (0..=999_999). Timezone-invariant.
+    pub micros: u32,
 }
 
 impl Moment {
+    /// A moment at `unix` seconds in `tz` with no sub-second component.
+    pub fn new(unix: i64, tz: Tz) -> Moment {
+        Moment { unix, tz, micros: 0 }
+    }
+
     /// The wall-clock representation in this moment's zone.
     pub fn wall(&self) -> DateTime {
         let off = self.tz.offset_at(self.unix);
-        DateTime::from_unix_offset(self.unix, off)
+        DateTime::from_unix_offset(self.unix, off, self.micros)
     }
 
     /// Build a moment from civil wall-clock fields in a zone (fields may be out
-    /// of range; they normalize/carry).
+    /// of range; they normalize/carry). No sub-second component.
     pub fn from_civil(tz: Tz, c: Civil) -> Moment {
-        let (unix, _off) = tz.resolve_local(c.unix_utc());
-        Moment { unix, tz }
+        Self::from_civil_frac(tz, c, 0)
     }
 
-    /// Same instant, reinterpreted in a different zone.
+    /// Like [`Moment::from_civil`], carrying a microsecond component.
+    pub fn from_civil_frac(tz: Tz, c: Civil, micros: u32) -> Moment {
+        let (unix, _off) = tz.resolve_local(c.unix_utc());
+        Moment { unix, tz, micros }
+    }
+
+    /// Same instant (and sub-second component), reinterpreted in a different zone.
     pub fn in_tz(self, tz: Tz) -> Moment {
-        Moment { unix: self.unix, tz }
+        Moment { unix: self.unix, tz, micros: self.micros }
     }
 }
 

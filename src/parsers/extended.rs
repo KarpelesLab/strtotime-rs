@@ -3,7 +3,7 @@
 use crate::civil::{days_in_month, weekday_from_days, days_from_civil};
 use crate::lookups::{apply_ampm, day_of_week, month_by_name, normalize_unit, two_digit_year, Unit};
 use crate::parsers::formats::{
-    atoi, collect_fields, is_all_digits, is_valid_time, mk, parse_iso, tail_from,
+    atoi, collect_fields, is_all_digits, is_valid_time, mk, mk_frac, parse_iso, tail_from,
 };
 use crate::parsers::token_parser::is_valid_date;
 use crate::relmath::apply_offset;
@@ -119,11 +119,14 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
         if !is_valid_time(hour, minute, second) {
             return None;
         }
+        let mut micros = 0u32;
         if pos < b.len() && b[pos] == b'.' {
             pos += 1;
+            let frac_start = pos;
             while pos < b.len() && b[pos].is_ascii_digit() {
                 pos += 1;
             }
+            micros = crate::frac_to_micros(&s[frac_start..pos]);
         }
         let mut tz = base.tz;
         if pos < b.len() {
@@ -133,7 +136,7 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
                 None => return None,
             }
         }
-        return Some(mk(tz, now.year, now.month as i64, now.day as i64, hour, minute, second));
+        return Some(mk_frac(tz, now.year, now.month as i64, now.day as i64, hour, minute, second, micros));
     }
 
     if !is_all_digits(s) {

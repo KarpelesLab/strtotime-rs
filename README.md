@@ -57,6 +57,21 @@ fn strtotime_civil(input: &str, base_unix: i64, tz: Tz) -> Result<DateTime, Erro
 `base_unix` is the reference for relative expressions (`tomorrow`, `+2 days`);
 it is ignored for fully absolute inputs.
 
+### Sub-second precision
+
+Like PHP's `strtotime()`, `strtotime()` returns whole seconds. A fractional
+component in the input (e.g. `…:17.02`, `@…​.5`, microseconds — nanoseconds are
+truncated to µs as PHP does) is retained on the civil result and via
+`strtotime_micros`:
+
+```rust
+use strtotime::{strtotime, strtotime_civil, strtotime_micros, Tz};
+
+assert_eq!(strtotime("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap(), 1214951717);
+assert_eq!(strtotime_civil("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap().micros, 20_000);
+assert_eq!(strtotime_micros("2008-07-01T22:35:17.02", 0, Tz::Utc).unwrap(), 1_214_951_717_020_000);
+```
+
 ## Features
 
 - **`iana`** *(default)* — full IANA timezone support (DST-aware named zones such

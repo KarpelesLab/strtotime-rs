@@ -61,13 +61,21 @@ use tz::Moment;
 /// "+2 days"); it is ignored for fully absolute inputs. Pass `0` (the epoch) if
 /// the expression is absolute.
 pub fn strtotime(input: &str, base_unix: i64, tz: Tz) -> Result<i64, Error> {
-    eval(input, Moment { unix: base_unix, tz }).map(|m| m.unix)
+    eval(input, Moment::new(base_unix, tz)).map(|m| m.unix)
 }
 
 /// Like [`strtotime`], but returns the resolved [`DateTime`] (broken-down civil
-/// fields plus the UTC offset in effect) instead of a bare timestamp.
+/// fields plus the UTC offset and microsecond component) instead of a bare
+/// timestamp.
 pub fn strtotime_civil(input: &str, base_unix: i64, tz: Tz) -> Result<DateTime, Error> {
-    eval(input, Moment { unix: base_unix, tz }).map(|m| m.wall())
+    eval(input, Moment::new(base_unix, tz)).map(|m| m.wall())
+}
+
+/// Like [`strtotime`], but returns **microseconds** since the Unix epoch,
+/// retaining any sub-second fraction in the input (which whole-second
+/// [`strtotime`] discards, matching PHP's `strtotime()`).
+pub fn strtotime_micros(input: &str, base_unix: i64, tz: Tz) -> Result<i64, Error> {
+    eval(input, Moment::new(base_unix, tz)).map(|m| m.wall().unix_micros())
 }
 
 /// The current Unix timestamp from the system clock. Requires the `std` feature.
@@ -105,7 +113,7 @@ pub fn strtotime_now(input: &str, tz: Tz) -> Result<i64, Error> {
 #[cfg(feature = "std")]
 impl From<DateTime> for std::time::SystemTime {
     fn from(dt: DateTime) -> Self {
-        system_time_from_unix(dt.unix())
+        system_time_from_unix(dt.unix()) + std::time::Duration::from_micros(dt.micros as u64)
     }
 }
 
@@ -211,7 +219,7 @@ fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
         }
     }
 
-    eval(rest, Moment { unix: date.unix, tz: base.tz }).ok()
+    eval(rest, Moment { unix: date.unix, tz: base.tz, micros: date.micros }).ok()
 }
 
 /// Strip a leading weekday name and reparse the rest, advancing to the named
@@ -344,7 +352,7 @@ fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
         while j < nb.len() && !is_op(nb[j]) {
             j += 1;
         }
-        result = eval(&n[start..j], Moment { unix: result.unix, tz: base.tz })?;
+        result = eval(&n[start..j], Moment { unix: result.unix, tz: base.tz, micros: result.micros })?;
         if j >= nb.len() {
             break;
         }
@@ -365,15 +373,16 @@ fn try_unix_timestamp(s: &str, mut tz: Tz) -> Result<Option<Moment>, Error> {
         None => (body, ""),
     };
 
-    let int_str = match ts_part.find('.') {
+    let (int_str, micros) = match ts_part.find('.') {
         Some(i) => {
+            let frac = &ts_part[i + 1..];
             // PHP rejects fractional seconds with more than 6 digits.
-            if ts_part.len() - i - 1 > 6 {
+            if frac.len() > 6 {
                 return Err(Error::InvalidNumber);
             }
-            &ts_part[..i]
+            (&ts_part[..i], frac_to_micros(frac))
         }
-        None => ts_part,
+        None => (ts_part, 0),
     };
 
     let unix: i64 = int_str.parse().map_err(|_| Error::InvalidNumber)?;
@@ -384,7 +393,22 @@ fn try_unix_timestamp(s: &str, mut tz: Tz) -> Result<Option<Moment>, Error> {
         }
     }
 
-    Ok(Some(Moment { unix, tz }))
+    Ok(Some(Moment { unix, tz, micros }))
+}
+
+/// Convert a run of fractional-second digits to microseconds: keep at most the
+/// first 6 digits (PHP truncates nanoseconds), right-padded to 6.
+pub(crate) fn frac_to_micros(frac_digits: &str) -> u32 {
+    let mut micros = 0u32;
+    for i in 0..6 {
+        micros *= 10;
+        if let Some(c) = frac_digits.as_bytes().get(i) {
+            if c.is_ascii_digit() {
+                micros += (c - b'0') as u32;
+            }
+        }
+    }
+    micros
 }
 
 /// Handle the bare keyword expressions: now, today, midnight, tomorrow,

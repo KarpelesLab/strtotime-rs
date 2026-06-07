@@ -30,6 +30,7 @@ while (($row = fgetcsv($fh)) !== false) {
     [$input, $baseUnix, $tz, $expectedUnix] = $row;
     $baseUnix = (int)$baseUnix;
     $expectedUnix = (int)$expectedUnix;
+    $expectedMicros = isset($row[4]) ? (int)$row[4] : 0;
 
     // Set timezone context
     if ($tz !== '') {
@@ -59,9 +60,34 @@ while (($row = fgetcsv($fh)) !== false) {
         fprintf(STDERR, "FAIL line %d: %s => PHP=%d, expected=%d (diff=%ds)\n",
             $line, json_encode($input), $result, $expectedUnix, $result - $expectedUnix);
         $fail++;
-    } else {
-        $pass++;
+        continue;
     }
+
+    $micros = micros_of($input);
+    if ($micros !== $expectedMicros) {
+        fprintf(STDERR, "FAIL line %d: %s => PHP micros=%d, expected=%d\n",
+            $line, json_encode($input), $micros, $expectedMicros);
+        $fail++;
+        continue;
+    }
+    $pass++;
+}
+
+/** Microseconds carried by an input's literal time field (see rebuild_csv.php). */
+function micros_of(string $input): int {
+    $input = trim($input);
+    if ($input !== '' && $input[0] === '@') {
+        try {
+            return (int)(new DateTime($input))->format('u');
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+    $p = @date_parse($input);
+    if (is_array($p) && empty($p['errors']) && !empty($p['fraction'])) {
+        return (int)round($p['fraction'] * 1_000_000);
+    }
+    return 0;
 }
 fclose($fh);
 

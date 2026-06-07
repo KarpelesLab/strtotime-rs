@@ -21,6 +21,13 @@ pub struct DateTime {
     pub minute: u8,
     /// Second, 0..=59.
     pub second: u8,
+    /// Sub-second component, in microseconds (0..=999_999).
+    ///
+    /// Populated from a fractional-second component in the input (e.g.
+    /// `…:17.02`, `@…​.5`); `0` otherwise. PHP's `strtotime()` discards this, so
+    /// [`crate::strtotime`] (whole seconds) ignores it — use [`DateTime::unix_micros`]
+    /// or [`crate::strtotime_micros`] to retain it.
+    pub micros: u32,
     /// Offset from UTC in seconds, east positive.
     pub offset: i32,
 }
@@ -39,6 +46,12 @@ impl DateTime {
         .wrapping_sub(self.offset as i64)
     }
 
+    /// The instant as **microseconds** since the Unix epoch, including the
+    /// sub-second [`micros`](DateTime::micros) component.
+    pub fn unix_micros(&self) -> i64 {
+        self.unix().wrapping_mul(1_000_000).wrapping_add(self.micros as i64)
+    }
+
     /// Day of week, 0 = Sunday .. 6 = Saturday.
     pub fn weekday(&self) -> u8 {
         civil::weekday_from_days(civil::days_from_civil(
@@ -48,10 +61,11 @@ impl DateTime {
         )) as u8
     }
 
-    /// Build a `DateTime` from a UTC instant and the offset in effect there.
-    /// The wall-clock fields are the local representation `unix + offset`.
-    pub(crate) fn from_unix_offset(unix: i64, offset: i32) -> DateTime {
-        let local = unix + offset as i64;
+    /// Build a `DateTime` from a UTC instant, the offset in effect there, and a
+    /// sub-second microsecond component. The wall-clock fields are the local
+    /// representation `unix + offset`.
+    pub(crate) fn from_unix_offset(unix: i64, offset: i32, micros: u32) -> DateTime {
+        let local = unix.wrapping_add(offset as i64);
         let days = local.div_euclid(86400);
         let secs = local.rem_euclid(86400);
         let (year, month, day) = civil::civil_from_days(days);
@@ -62,6 +76,7 @@ impl DateTime {
             hour: (secs / 3600) as u8,
             minute: ((secs % 3600) / 60) as u8,
             second: (secs % 60) as u8,
+            micros,
             offset,
         }
     }

@@ -16,6 +16,12 @@ pub(crate) fn mk(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Mo
     Moment::from_civil(tz, Civil::new(y, mo, d, h, mi, s))
 }
 
+/// Build a moment from civil wall fields plus a microsecond component.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn mk_frac(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64, micros: u32) -> Moment {
+    Moment::from_civil_frac(tz, Civil::new(y, mo, d, h, mi, s), micros)
+}
+
 /// Non-empty and all ASCII digits.
 pub(crate) fn is_all_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
@@ -292,16 +298,18 @@ pub fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
     }
 
     let (mut h, mut mi, mut sec) = (0i64, 0i64, 0i64);
+    let mut micros = 0u32;
     let mut tz = base.tz;
     if !time_tz.is_empty() {
-        let (hh, mm, ss, t) = parse_time_tz_suffix(time_tz, base.tz);
+        let (hh, mm, ss, us, t) = parse_time_tz_suffix(time_tz, base.tz);
         h = hh;
         mi = mm;
         sec = ss;
+        micros = us;
         tz = t;
     }
 
-    Some(mk(tz, sign * year, month, day, h, mi, sec))
+    Some(mk_frac(tz, sign * year, month, day, h, mi, sec, micros))
 }
 
 /// `MM/DD/YY HHMM` (short year + military time). Mirrors
@@ -405,7 +413,7 @@ pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
         rest = rest[..rest.len() - 2].trim();
     }
 
-    let (mut hour, minute, second, consumed) = parse_iso8601_time(rest)?;
+    let (mut hour, minute, second, micros, consumed) = parse_iso8601_time(rest)?;
     if !ampm.is_empty() {
         hour = apply_ampm(hour, ampm);
     }
@@ -430,7 +438,7 @@ pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
         }
     }
 
-    Some(mk(tz, dw.year, dw.month as i64, dw.day as i64, hour, minute, second))
+    Some(mk_frac(tz, dw.year, dw.month as i64, dw.day as i64, hour, minute, second, micros))
 }
 
 // ---------------------------------------------------------------------------
@@ -443,9 +451,9 @@ pub fn is_valid_time(h: i64, mi: i64, s: i64) -> bool {
 }
 
 /// Parse an ISO 8601 time from the start of `s`. Returns `(hour, minute, second,
-/// bytes_consumed)`. Sub-second digits are consumed but ignored (we return whole
-/// seconds). Mirrors `parseISO8601Time`. Hour 24 is allowed (caller handles).
-pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, usize)> {
+/// micros, bytes_consumed)`. Sub-second digits are truncated to microseconds.
+/// Mirrors `parseISO8601Time`. Hour 24 is allowed (caller handles).
+pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, u32, usize)> {
     let b = s.as_bytes();
     if b.is_empty() {
         return None;
@@ -485,31 +493,36 @@ pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, usize)> {
         return None;
     }
 
-    // Fractional seconds: consume digits after a '.'.
+    // Fractional seconds: consume digits after a '.', truncated to microseconds.
+    let mut micros = 0u32;
     if consumed < b.len() && b[consumed] == b'.' {
         consumed += 1;
+        let frac_start = consumed;
         while consumed < b.len() && b[consumed].is_ascii_digit() {
             consumed += 1;
         }
+        micros = crate::frac_to_micros(&s[frac_start..consumed]);
     }
 
-    Some((hour, minute, second, consumed))
+    Some((hour, minute, second, micros, consumed))
 }
 
 /// Parse `HH:MM:SS[.frac] [TZ]` from a date suffix, returning
-/// `(hour, minute, second, tz)`. Mirrors `parseTimeTzSuffix`.
-pub fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, Tz) {
+/// `(hour, minute, second, micros, tz)`. Mirrors `parseTimeTzSuffix`.
+pub fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, u32, Tz) {
     let Some((h, m, sec, consumed)) = tz::parse_flex_time(s) else {
-        return (0, 0, 0, default_tz);
+        return (0, 0, 0, 0, default_tz);
     };
     let mut remaining = &s[consumed..];
 
+    let mut micros = 0u32;
     if remaining.starts_with('.') {
         let mut end = 1;
         let rb = remaining.as_bytes();
         while end < rb.len() && rb[end].is_ascii_digit() {
             end += 1;
         }
+        micros = crate::frac_to_micros(&remaining[1..end]);
         remaining = &remaining[end..];
     }
 
@@ -523,5 +536,5 @@ pub fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, Tz) {
         }
     }
 
-    (h as i64, m as i64, sec as i64, tz)
+    (h as i64, m as i64, sec as i64, micros, tz)
 }

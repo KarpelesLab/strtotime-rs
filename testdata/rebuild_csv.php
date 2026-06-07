@@ -33,7 +33,7 @@ fclose($fh);
 
 // --- Write success CSV ---
 $fh = fopen("$dir/strtotime_tests.csv", 'w');
-fputcsv($fh, ['input', 'base_unix', 'tz', 'expected_unix']);
+fputcsv($fh, ['input', 'base_unix', 'tz', 'expected_unix', 'expected_micros']);
 // Sort by expected_unix for easy dedup
 usort($success, function($a, $b) {
     if ($a[3] !== $b[3]) return $a[3] <=> $b[3];
@@ -96,7 +96,31 @@ function processEntry(string $input, int $baseUnix, string $tz, array &$success,
         // PHP rejects this input
         $invalid[] = [$input, (string)$baseUnix, $tz];
     } else {
-        // PHP accepts — use PHP's value as expected
-        $success[] = [$input, (string)$baseUnix, $tz, (string)$result];
+        // PHP accepts — use PHP's value as expected, plus the microsecond
+        // fraction carried by the input's literal time field (see micros_of).
+        $success[] = [$input, (string)$baseUnix, $tz, (string)$result, (string)micros_of($input)];
     }
+}
+
+/**
+ * Microseconds (0..999999) carried by an input's literal time field. Independent
+ * of base/timezone. PHP's strtotime() truncates fractions to whole seconds, so
+ * we recover them via DateTime ("@" timestamps) or date_parse (everything else,
+ * which also yields the microsecond-truncated fraction and `false` for relative
+ * inputs that never carry one).
+ */
+function micros_of(string $input): int {
+    $input = trim($input);
+    if ($input !== '' && $input[0] === '@') {
+        try {
+            return (int)(new DateTime($input))->format('u');
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+    $p = @date_parse($input);
+    if (is_array($p) && empty($p['errors']) && !empty($p['fraction'])) {
+        return (int)round($p['fraction'] * 1_000_000);
+    }
+    return 0;
 }
