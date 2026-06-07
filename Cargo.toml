@@ -1,0 +1,30 @@
+[package]
+name = "strtotime"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+description = "no_std, no-alloc parser for PHP-style date/time expressions (\"next week\", \"+2 days\", \"2023-05-15\", \"@unixts\") into a Unix timestamp. Optional IANA timezone and std support."
+repository = "https://github.com/KarpelesLab/strtotime-rs"
+keywords = ["strtotime", "datetime", "parser", "php", "no_std"]
+categories = ["date-and-time", "no-std", "parser-implementations"]
+readme = "README.md"
+exclude = ["/.github", "/testdata"]
+
+[features]
+default = ["iana"]
+# Full IANA timezone database support (DST-aware named zones like America/New_York).
+# Pulls in the no_std/no-alloc `timezone-data` crate. Without it, only UTC,
+# fixed numeric offsets, and timezone abbreviations are supported.
+iana = ["dep:timezone-data"]
+# Enables std-only conveniences: SystemTime conversions and now()-based helpers.
+std = []
+
+[dependencies]
+timezone-data = { path = "../timezone-data-rs", optional = true }
+
+[dev-dependencies]
+timezone-data = { path = "../timezone-data-rs" }
+
+[lints.rust]
+unsafe_code = "forbid"

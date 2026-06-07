@@ -1,0 +1,23 @@
+input,base_unix,tz
+@1121373041.123456789,0,UTC
+2023-W3,0,UTC
+"third day of january 2025",1749945600,UTC
+"fifth day of march",1749945600,UTC
+,0,
+not-a-date,0,
+2023/01-15,0,
+abcdef,0,
+!@#$%^&*(),0,
+"next month month",0,
+2023-,0,
+"22:49:12 bogusTZ",1150494719,Europe/Lisbon
+22.49.12.42bogusTZ,1150494719,Europe/Lisbon
+"022233 bogusTZ",1150494719,Europe/Lisbon
+"10/Oct/2000:13:55:36 +00100",1150494719,Europe/Lisbon
+"mayy 2 2009",0,UTC
+2023-01-15T25:00:00,0,UTC
+2023-01-15T14:60:00,0,UTC
+"20060212T231223 bogusTZ",0,UTC
+2023-01-15T14:30:00+25:00,0,UTC
+2023-W00,0,UTC
+2023-W54,0,UTC
