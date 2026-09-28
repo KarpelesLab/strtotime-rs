@@ -1,5 +1,8 @@
 # strtotime
 
+[![CI](https://github.com/KarpelesLab/strtotime-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/KarpelesLab/strtotime-rs/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/strtotime.svg)](https://crates.io/crates/strtotime)
+[![docs.rs](https://img.shields.io/docsrs/strtotime)](https://docs.rs/strtotime)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A `#![no_std]`, allocation-free Rust library that parses PHP-style date/time
