@@ -37,7 +37,7 @@ fn add_duration(m: Moment, secs: i64) -> Moment {
 /// Add `n` calendar days with PHP DST handling: preserve wall-clock time, but if
 /// the result lands in a spring-forward gap (wrong day or shifted clock), fall
 /// forward using duration arithmetic. Mirrors `addDaysPHP`.
-pub fn add_days_php(m: Moment, n: i64) -> Moment {
+pub(crate) fn add_days_php(m: Moment, n: i64) -> Moment {
     let w = m.wall();
     let result = add_date(m, 0, 0, n);
     let rw = result.wall();
@@ -56,7 +56,7 @@ pub fn add_days_php(m: Moment, n: i64) -> Moment {
 
 /// Add `n` business days (Mon–Fri). From a weekend with `n == 0`, snap to the
 /// next Monday. Mirrors `addWeekdays`.
-pub fn add_weekdays(m: Moment, n: i64) -> Moment {
+pub(crate) fn add_weekdays(m: Moment, n: i64) -> Moment {
     let wd = m.wall().weekday();
     if n == 0 {
         return match wd {
@@ -78,7 +78,7 @@ pub fn add_weekdays(m: Moment, n: i64) -> Moment {
 }
 
 /// Apply `amount` units of `unit` to `m`. Mirrors `applyTimeOffset`.
-pub fn apply_offset(m: Moment, amount: i64, unit: Unit) -> Moment {
+pub(crate) fn apply_offset(m: Moment, amount: i64, unit: Unit) -> Moment {
     match unit {
         Unit::Day => add_days_php(m, amount),
         Unit::Week => add_days_php(m, amount * 7),

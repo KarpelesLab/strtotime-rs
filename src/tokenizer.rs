@@ -8,11 +8,11 @@
 use crate::error::Error;
 
 /// Maximum number of tokens a single input may produce.
-pub const MAX_TOKENS: usize = 96;
+pub(crate) const MAX_TOKENS: usize = 96;
 
 /// Character class of a token. Mirrors the Go reference's `tokenType`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokType {
+pub(crate) enum TokType {
     Str,
     Number,
     Operator,
@@ -22,7 +22,7 @@ pub enum TokType {
 
 /// A single token: its text, class, and byte offset in the input.
 #[derive(Debug, Clone, Copy)]
-pub struct Token<'a> {
+pub(crate) struct Token<'a> {
     pub val: &'a str,
     pub typ: TokType,
     pub pos: usize,
@@ -37,14 +37,14 @@ impl Token<'_> {
 }
 
 /// A tokenized input held in a fixed-size buffer.
-pub struct Tokens<'a> {
+pub(crate) struct Tokens<'a> {
     buf: [Token<'a>; MAX_TOKENS],
     len: usize,
 }
 
 impl<'a> Tokens<'a> {
     /// Tokens as a slice.
-    pub fn as_slice(&self) -> &[Token<'a>] {
+    pub(crate) fn as_slice(&self) -> &[Token<'a>] {
         &self.buf[..self.len]
     }
 }
@@ -63,7 +63,7 @@ fn classify(c: u8) -> TokType {
 
 /// Tokenize `s`. Operates on bytes; since all token-significant characters are
 /// ASCII, runs of non-ASCII bytes are grouped as `Str` tokens.
-pub fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
+pub(crate) fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
     let mut buf = [Token::EMPTY; MAX_TOKENS];
     let mut len = 0usize;
 

@@ -50,7 +50,7 @@ fn ampm_of(s: &str) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 
 /// `YYYYMMDD`, `YYYYMMDDhhmmss` (+ optional tz). Mirrors `parseCompactTimestamp`.
-pub fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
     let (digits, tz_str) = match s.find(' ') {
         Some(i) => (&s[..i], s[i + 1..].trim()),
         None => (s, ""),
@@ -92,7 +92,7 @@ pub fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
 
 /// `tHHMM`, dotted `HH.MM.SS[.f][TZ]`, `HHMMSS`, `YYYYDDD`. Mirrors
 /// `parseCompactTimeFormats`.
-pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
     let b = s.as_bytes();
     let now = base.wall();
 
@@ -204,7 +204,7 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `Jan-15-2006`, `2006-Jan-15`, `15-Jan-2006`. Mirrors `parseMonthNameFormat`.
-pub fn parse_month_name_format(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_month_name_format(s: &str, base: Moment) -> Option<Moment> {
     let mut it = s.split('-');
     let p0 = it.next()?;
     let p1 = it.next()?;
@@ -260,7 +260,7 @@ fn parse_int(s: &str) -> Option<i64> {
 // ---------------------------------------------------------------------------
 
 /// `DD/Mon/YYYY:HH:MM:SS +0000`. Mirrors `parseHTTPLogFormat`.
-pub fn parse_http_log_format(s: &str, _base: Moment) -> Option<Moment> {
+pub(crate) fn parse_http_log_format(s: &str, _base: Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let tz_off = s[sp + 1..].trim();
@@ -320,7 +320,7 @@ pub fn parse_http_log_format(s: &str, _base: Moment) -> Option<Moment> {
 
 /// `DD Mon YYYY [time] [tz]`, `DD-Mon-YYYY`, with weekday prefix/ordinal.
 /// Mirrors `parseDayMonthYear`.
-pub fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
     let (after_prefix, prefix_day) = match crate::strip_weekday_prefix(s) {
         Some((rest, dn)) => (rest, dn),
         None => (s, -1),
@@ -503,7 +503,7 @@ fn parse_day_month_year_compact(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `Oct 2001` or `2001 Oct`. Mirrors `parseMonthYearOnly`.
-pub fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
     let mut fields = [""; NF];
     let n = collect_fields(s, &mut fields);
     if n != 2 {
@@ -530,7 +530,7 @@ pub fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
 
 /// `19:30 Dec 17 2005`, `17:00 2004-01-01`, `1pm Aug 1 GMT 2007`. Mirrors
 /// `parseTimeBeforeDate`.
-pub fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
     let mut fields = [""; NF];
     let n = collect_fields(s, &mut fields);
     if n < 2 {
@@ -636,7 +636,7 @@ pub fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `MM/DD/YYYY H:MM AM`. Mirrors `parseUSDateWithTime`.
-pub fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
     let mut fields = [""; NF];
     let n = collect_fields(s, &mut fields);
     if n < 2 {
@@ -674,7 +674,7 @@ pub fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
 
 /// `first day of YYYY-MM`, `last day of next month`, etc. Mirrors
 /// `parseFirstLastDayOfDate`.
-pub fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Moment> {
     let t = s.trim();
     let (is_first, rest) = if t.len() >= 13 && t[..13].eq_ignore_ascii_case("first day of ") {
         (true, t[13..].trim())
@@ -771,7 +771,7 @@ pub fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `26th Nov [YYYY] [time]`. Mirrors `parseOrdinalDate`.
-pub fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
     let mut f = [""; NF];
     let n = collect_fields(s, &mut f);
     if n < 2 {
@@ -807,7 +807,7 @@ pub fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `Dec 17 19:30 2005`. Mirrors `parseMonthDayTimeYear`.
-pub fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment> {
     let mut f = [""; NF];
     let n = collect_fields(s, &mut f);
     if n != 4 {
@@ -833,7 +833,7 @@ pub fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `YYYY-MM-DD TZ +N unit ...`. Mirrors `parseDateTimeTZRelative`.
-pub fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment> {
     let mut rels: [(i64, Unit); NF] = [(0, Unit::Day); NF];
     let mut rn = 0;
     let mut remaining = s;
@@ -895,7 +895,7 @@ pub fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY-MM-DD TZname`. Mirrors `parseDateWithTZ`.
-pub fn parse_date_with_tz(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_date_with_tz(s: &str, base: Moment) -> Option<Moment> {
     let mut f = [""; NF];
     let n = collect_fields(s, &mut f);
     if n != 2 {
@@ -912,7 +912,7 @@ pub fn parse_date_with_tz(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `front of 7` (6:45), `back of 7` (7:15), with am/pm. Mirrors `parseFrontBackOf`.
-pub fn parse_front_back_of(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_front_back_of(s: &str, base: Moment) -> Option<Moment> {
     let t = s.trim();
     let (is_front, mut rest) = if t.len() >= 9 && t[..9].eq_ignore_ascii_case("front of ") {
         (true, t[9..].trim())
@@ -992,7 +992,7 @@ fn roman_month(s: &str) -> Option<i64> {
 }
 
 /// `20 VI. 2005`. Mirrors `parseRomanNumeralDate`.
-pub fn parse_roman_numeral_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_roman_numeral_date(s: &str, base: Moment) -> Option<Moment> {
     let mut f = [""; NF];
     let n = collect_fields(s, &mut f);
     if n < 3 {
@@ -1068,7 +1068,7 @@ fn parse_ordinal_prefix(fields: &[&str], idx: usize) -> Option<(i64, bool, usize
 
 /// `1 Monday December 2008`, `second Monday December 2008`, `+1 week Thursday Nov 2007`.
 /// Mirrors `parseNumberedWeekday`.
-pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
     let mut f = [""; NF];
     let n = collect_fields(s, &mut f);
     if n < 3 {

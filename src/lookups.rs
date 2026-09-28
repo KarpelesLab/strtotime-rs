@@ -5,7 +5,7 @@
 
 /// Canonical time units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unit {
+pub(crate) enum Unit {
     Day,
     Week,
     Weekday,
@@ -18,7 +18,7 @@ pub enum Unit {
 
 /// Month number (1..=12) for a month name, handling a trailing period
 /// (e.g. "dec." → 12). Case-insensitive.
-pub fn month_by_name(name: &str) -> Option<u8> {
+pub(crate) fn month_by_name(name: &str) -> Option<u8> {
     let name = name.strip_suffix('.').unwrap_or(name);
     const TABLE: &[(&str, u8)] = &[
         ("january", 1),
@@ -55,7 +55,7 @@ pub fn month_by_name(name: &str) -> Option<u8> {
 
 /// Day-of-week number (0 = Sunday .. 6 = Saturday) for a day name, or `None`.
 /// Case-insensitive.
-pub fn day_of_week(day: &str) -> Option<u8> {
+pub(crate) fn day_of_week(day: &str) -> Option<u8> {
     const TABLE: &[(&str, u8)] = &[
         ("sunday", 0),
         ("sun", 0),
@@ -83,7 +83,7 @@ pub fn day_of_week(day: &str) -> Option<u8> {
 /// Normalize a time-unit token to its canonical [`Unit`]. Mirrors
 /// `normalizeTimeUnit`: exact table, then strip a trailing "s", then known
 /// prefixes. Case-insensitive.
-pub fn normalize_unit(unit: &str) -> Option<Unit> {
+pub(crate) fn normalize_unit(unit: &str) -> Option<Unit> {
     // Exact matches (including odd plurals / abbreviations from the Go map).
     const TABLE: &[(&str, Unit)] = &[
         ("d", Unit::Day),
@@ -176,7 +176,7 @@ fn strip_trailing_s(s: &str) -> Option<&str> {
 
 /// Convert an ordinal word ("first".."twelfth") to its number (1..12), else 0.
 /// Case-insensitive.
-pub fn ordinal_word_to_number(word: &str) -> i64 {
+pub(crate) fn ordinal_word_to_number(word: &str) -> i64 {
     const TABLE: &[(&str, i64)] = &[
         ("first", 1),
         ("second", 2),
@@ -200,7 +200,7 @@ pub fn ordinal_word_to_number(word: &str) -> i64 {
 }
 
 /// Expand a 2-digit year: 00–69 → 2000–2069, 70–99 → 1970–1999.
-pub fn two_digit_year(year: i64) -> i64 {
+pub(crate) fn two_digit_year(year: i64) -> i64 {
     if year < 100 {
         if year < 70 { year + 2000 } else { year + 1900 }
     } else {
@@ -209,7 +209,7 @@ pub fn two_digit_year(year: i64) -> i64 {
 }
 
 /// Convert an hour to 24-hour form given an "am"/"pm" indicator (case-insensitive).
-pub fn apply_ampm(hour: i64, ampm: &str) -> i64 {
+pub(crate) fn apply_ampm(hour: i64, ampm: &str) -> i64 {
     if ampm.eq_ignore_ascii_case("am") {
         if hour == 12 { 0 } else { hour }
     } else if hour == 12 {

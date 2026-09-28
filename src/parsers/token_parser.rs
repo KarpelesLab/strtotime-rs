@@ -28,7 +28,7 @@ pub(crate) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(input: &'a str, toks: &'a [Token<'a>], base: Moment) -> Parser<'a> {
+    pub(crate) fn new(input: &'a str, toks: &'a [Token<'a>], base: Moment) -> Parser<'a> {
         Parser {
             input,
             toks,
@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
 
     // --- driver ------------------------------------------------------------
 
-    pub fn parse(&mut self) -> Result<Moment, Error> {
+    pub(crate) fn parse(&mut self) -> Result<Moment, Error> {
         self.skip_ws();
 
         if let Some(t) = self.try_standard_date()? {

@@ -38,7 +38,7 @@ impl core::fmt::Debug for Tz {
 
 impl Tz {
     /// The offset (seconds east of UTC) in effect at the given UTC instant.
-    pub fn offset_at(&self, unix: i64) -> i32 {
+    pub(crate) fn offset_at(&self, unix: i64) -> i32 {
         #[cfg(not(feature = "iana"))]
         let _ = unix;
         match self {
@@ -54,7 +54,7 @@ impl Tz {
     ///
     /// For UTC/fixed this is exact. For IANA zones we use the standard two-pass
     /// estimate; gap/fold edge cases are refined later against the test corpus.
-    pub fn resolve_local(&self, wall: i64) -> (i64, i32) {
+    pub(crate) fn resolve_local(&self, wall: i64) -> (i64, i32) {
         match self {
             Tz::Utc => (wall, 0),
             Tz::Fixed(o) => (wall.wrapping_sub(*o as i64), *o),
@@ -96,7 +96,7 @@ pub(crate) struct Moment {
 
 impl Moment {
     /// A moment at `unix` seconds in `tz` with no sub-second component.
-    pub fn new(unix: i64, tz: Tz) -> Moment {
+    pub(crate) fn new(unix: i64, tz: Tz) -> Moment {
         Moment {
             unix,
             tz,
@@ -105,25 +105,25 @@ impl Moment {
     }
 
     /// The wall-clock representation in this moment's zone.
-    pub fn wall(&self) -> DateTime {
+    pub(crate) fn wall(&self) -> DateTime {
         let off = self.tz.offset_at(self.unix);
         DateTime::from_unix_offset(self.unix, off, self.micros)
     }
 
     /// Build a moment from civil wall-clock fields in a zone (fields may be out
     /// of range; they normalize/carry). No sub-second component.
-    pub fn from_civil(tz: Tz, c: Civil) -> Moment {
+    pub(crate) fn from_civil(tz: Tz, c: Civil) -> Moment {
         Self::from_civil_frac(tz, c, 0)
     }
 
     /// Like [`Moment::from_civil`], carrying a microsecond component.
-    pub fn from_civil_frac(tz: Tz, c: Civil, micros: u32) -> Moment {
+    pub(crate) fn from_civil_frac(tz: Tz, c: Civil, micros: u32) -> Moment {
         let (unix, _off) = tz.resolve_local(c.unix_utc());
         Moment { unix, tz, micros }
     }
 
     /// Same instant (and sub-second component), reinterpreted in a different zone.
-    pub fn in_tz(self, tz: Tz) -> Moment {
+    pub(crate) fn in_tz(self, tz: Tz) -> Moment {
         Moment {
             unix: self.unix,
             tz,
@@ -258,7 +258,7 @@ fn full_name_to_iana(s: &str) -> Option<&'static str> {
 /// Parse a timezone string: abbreviation, full name, or IANA identifier.
 /// Returns `None` if unrecognized. Mirrors `tryParseTimezone` in the Go
 /// reference. Numeric offsets are handled separately by [`parse_numeric_offset`].
-pub fn parse_timezone(s: &str) -> Option<Tz> {
+pub(crate) fn parse_timezone(s: &str) -> Option<Tz> {
     if s.is_empty() {
         return None;
     }
@@ -293,7 +293,7 @@ pub fn parse_timezone(s: &str) -> Option<Tz> {
 /// Parse a numeric timezone offset (`Z`, `+HH:MM`, `-HHMM`, `+HH`, flexible
 /// `+H:M`). Returns `(offset_seconds, bytes_consumed)`. Mirrors
 /// `parseNumericTimezoneOffset` in the Go reference.
-pub fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
+pub(crate) fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
     let b = s.as_bytes();
     if b.is_empty() {
         return None;
@@ -383,7 +383,7 @@ pub fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
 
 /// Parse a flexible `H:M[:S]` time (1–2 digit components) from the start of `s`.
 /// Returns `(hour, minute, second, bytes_consumed)`. Mirrors `parseFlexTime`.
-pub fn parse_flex_time(s: &str) -> Option<(i32, i32, i32, usize)> {
+pub(crate) fn parse_flex_time(s: &str) -> Option<(i32, i32, i32, usize)> {
     let b = s.as_bytes();
     let mut pos = 0;
     let h_start = pos;

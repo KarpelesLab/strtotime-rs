@@ -9,7 +9,7 @@ use crate::parsers::formats::{atoi, is_all_digits, mk, mk_frac, parse_iso, parse
 use crate::tz::{self, Moment, Tz};
 
 /// Entry point: try week date, then `T` datetime. Mirrors `parseISO8601`.
-pub fn parse_iso8601(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso8601(s: &str, base: Moment) -> Option<Moment> {
     if let Some(m) = parse_iso_week_date(s, base) {
         return Some(m);
     }

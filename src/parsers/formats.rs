@@ -88,7 +88,7 @@ fn split3(s: &str, sep: u8) -> Option<(&str, &str, &str)> {
 /// Run the ordered format parsers; returns the first match. Mirrors the
 /// `formatParsers` list in `strtotime.go`. Parsers from later phases are added
 /// in their correct positions as they land.
-pub fn pipeline(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn pipeline(s: &str, base: Moment) -> Option<Moment> {
     use crate::parsers::{extended as ext, iso8601, tzfmt};
 
     let first = s.as_bytes().first().copied().unwrap_or(0);
@@ -143,7 +143,7 @@ pub fn pipeline(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `YYYY-MM-DD` or `D-M-YYYY` (and 2-digit-year variants). Mirrors `parseISOFormat`.
-pub fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'-') != 2 {
         return None;
     }
@@ -180,7 +180,7 @@ pub fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY/MM/DD`. Mirrors `parseSlashFormat`.
-pub fn parse_slash(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_slash(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'/') != 2 {
         return None;
     }
@@ -196,7 +196,7 @@ pub fn parse_slash(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `MM/DD/YYYY`. Mirrors `parseUSFormat`.
-pub fn parse_us(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_us(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'/') != 2 {
         return None;
     }
@@ -212,7 +212,7 @@ pub fn parse_us(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `DD.MM.YY` / `DD.MM.YYYY`. Mirrors `parseEuropeanFormat`.
-pub fn parse_european(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_european(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'.') != 2 {
         return None;
     }
@@ -232,7 +232,7 @@ pub fn parse_european(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY-MM`, `YYYY-M`, or ISO ordinal `YYYY-DDD`. Mirrors `parseYearMonthFormat`.
-pub fn parse_year_month(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_year_month(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'-') != 1 {
         return None;
     }
@@ -261,7 +261,7 @@ pub fn parse_year_month(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `0000-00-00 ...` → PHP's -0001-11-30. Mirrors `parseZeroDate`.
-pub fn parse_zero_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_zero_date(s: &str, base: Moment) -> Option<Moment> {
     if !s.trim_start().starts_with("0000-00-00") {
         return None;
     }
@@ -271,7 +271,7 @@ pub fn parse_zero_date(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `-YYYY-MM-DD [HH:MM:SS [TZ]]` / `+YYYY-MM-DD[T]...`. Mirrors `parseSignedYear`.
-pub fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
     let b = s.as_bytes();
     if b.len() < 2 {
         return None;
@@ -326,7 +326,7 @@ pub fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
 
 /// `MM/DD/YY HHMM` (short year + military time). Mirrors
 /// `parseShortYearUSDateWithMilitaryTime`.
-pub fn parse_short_year_us_military(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_short_year_us_military(s: &str, base: Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let time_part = s[sp + 1..].trim();
@@ -356,7 +356,7 @@ pub fn parse_short_year_us_military(s: &str, base: Moment) -> Option<Moment> {
 
 /// 5–6 digit "year" that PHP reinterprets as compact time + month/day. Mirrors
 /// `parseLargeYearAsTime`.
-pub fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> {
     if count(s, b'-') != 2 {
         return None;
     }
@@ -409,7 +409,7 @@ pub fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> {
 
 /// `YYYY-MM-DD HH:MM:SS [TZ]` (and month-name dates via the extended parser,
 /// wired later). Mirrors `parseDateTimeFormat`.
-pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let mut rest = s[sp + 1..].trim();
@@ -479,14 +479,14 @@ pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// Validate a wall-clock time.
-pub fn is_valid_time(h: i64, mi: i64, s: i64) -> bool {
+pub(crate) fn is_valid_time(h: i64, mi: i64, s: i64) -> bool {
     (0..=23).contains(&h) && (0..=59).contains(&mi) && (0..=59).contains(&s)
 }
 
 /// Parse an ISO 8601 time from the start of `s`. Returns `(hour, minute, second,
 /// micros, bytes_consumed)`. Sub-second digits are truncated to microseconds.
 /// Mirrors `parseISO8601Time`. Hour 24 is allowed (caller handles).
-pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, u32, usize)> {
+pub(crate) fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, u32, usize)> {
     let b = s.as_bytes();
     if b.is_empty() {
         return None;
@@ -546,7 +546,7 @@ pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, u32, usize)> {
 
 /// Parse `HH:MM:SS[.frac] [TZ]` from a date suffix, returning
 /// `(hour, minute, second, micros, tz)`. Mirrors `parseTimeTzSuffix`.
-pub fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, u32, Tz) {
+pub(crate) fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, u32, Tz) {
     let Some((h, m, sec, consumed)) = tz::parse_flex_time(s) else {
         return (0, 0, 0, 0, default_tz);
     };

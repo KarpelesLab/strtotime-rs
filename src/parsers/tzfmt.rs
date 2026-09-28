@@ -6,7 +6,7 @@ use crate::parsers::formats::{mk, parse_iso, tail_from};
 use crate::tz::{self, Moment};
 
 /// Entry point. Mirrors `parseWithTimezone`.
-pub fn parse_with_timezone(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_with_timezone(s: &str, base: Moment) -> Option<Moment> {
     parse_full_datetime_with_tz(s, base)
         .or_else(|| parse_iso_datetime_with_tz(s, base))
         .or_else(|| parse_time_only_with_tz(s, base))

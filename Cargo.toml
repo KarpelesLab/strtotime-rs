@@ -28,3 +28,5 @@ timezone-data = "0.2"
 
 [lints.rust]
 unsafe_code = "forbid"
+# Keep internal items crate-private so only the documented API is exported.
+unreachable_pub = "warn"

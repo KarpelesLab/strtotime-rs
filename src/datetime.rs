@@ -98,13 +98,13 @@ pub(crate) struct Civil {
 }
 
 impl Civil {
-    pub fn new(y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Civil {
+    pub(crate) fn new(y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Civil {
         Civil { y, mo, d, h, mi, s }
     }
 
     /// Normalize the month into the year so the month lands in 1..=12. Day and
     /// clock fields stay as-is (they carry linearly in [`Civil::unix_utc`]).
-    pub fn norm_month(mut self) -> Civil {
+    pub(crate) fn norm_month(mut self) -> Civil {
         let m0 = self.mo - 1;
         self.y += m0.div_euclid(12);
         self.mo = m0.rem_euclid(12) + 1;
@@ -113,7 +113,7 @@ impl Civil {
 
     /// Seconds since the epoch if these wall fields are interpreted as UTC.
     /// (For zoned times, subtract the offset separately.)
-    pub fn unix_utc(self) -> i64 {
+    pub(crate) fn unix_utc(self) -> i64 {
         let n = self.norm_month();
         civil::unix_from_civil(n.y, n.mo, n.d, n.h, n.mi, n.s)
     }

@@ -10,7 +10,7 @@
 ///
 /// Month is 1..=12 here; callers normalize out-of-range months first. Works for
 /// any year. Mirrors `phpEpochDays` in the Go reference.
-pub const fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+pub(crate) const fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let y = if month <= 2 { year - 1 } else { year };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400; // [0, 399]
@@ -22,7 +22,7 @@ pub const fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 
 /// Inverse of [`days_from_civil`]: returns `(year, month, day)` for a day count
 /// since the Unix epoch. Month is 1..=12.
-pub const fn civil_from_days(z: i64) -> (i64, i64, i64) {
+pub(crate) const fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = z - era * 146097; // [0, 146096]
@@ -40,7 +40,7 @@ pub const fn civil_from_days(z: i64) -> (i64, i64, i64) {
 /// `i64`; they are combined with two's-complement wrapping so extreme years
 /// overflow exactly as PHP's `int64` arithmetic does (e.g. the documented
 /// `i64::MIN` wrap-around cases).
-pub const fn unix_from_civil(
+pub(crate) const fn unix_from_civil(
     year: i64,
     month: i64,
     day: i64,
@@ -57,18 +57,18 @@ pub const fn unix_from_civil(
 
 /// Day of week for a day count since the epoch. 0 = Sunday .. 6 = Saturday
 /// (matching Go's `time.Weekday` and PHP). 1970-01-01 was a Thursday.
-pub const fn weekday_from_days(z: i64) -> i64 {
+pub(crate) const fn weekday_from_days(z: i64) -> i64 {
     (z + 4).rem_euclid(7)
 }
 
 /// Whether `year` is a leap year in the proleptic Gregorian calendar.
-pub const fn is_leap_year(year: i64) -> bool {
+pub(crate) const fn is_leap_year(year: i64) -> bool {
     year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
 /// Number of days in `month` (1..=12) of `year`. Returns 0 for out-of-range
 /// months.
-pub const fn days_in_month(year: i64, month: i64) -> i64 {
+pub(crate) const fn days_in_month(year: i64, month: i64) -> i64 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
