@@ -47,12 +47,12 @@ mod relmath;
 mod tokenizer;
 mod tz;
 
-pub use datetime::DateTime;
-pub use error::Error;
-pub use tz::Tz;
+pub use crate::datetime::DateTime;
+pub use crate::error::Error;
+pub use crate::tz::Tz;
 
-use datetime::Civil;
-use tz::Moment;
+use crate::datetime::Civil;
+use crate::tz::Moment;
 
 /// Parse `input` relative to `base_unix` (a Unix timestamp) in zone `tz`,
 /// returning the resolved Unix timestamp.
@@ -174,7 +174,7 @@ fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
 
 /// Does `s` look like a date format (`A-B-C`, `A/B/C`, or `A.B.C`, all digits)?
 fn looks_like_date(s: &str) -> bool {
-    for sep in [b'-', b'/', b'.'] {
+    for sep in *b"-/." {
         if s.bytes().filter(|b| *b == sep).count() == 2 {
             let mut ok = true;
             let mut nonempty = 0;
@@ -219,7 +219,15 @@ fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
         }
     }
 
-    eval(rest, Moment { unix: date.unix, tz: base.tz, micros: date.micros }).ok()
+    eval(
+        rest,
+        Moment {
+            unix: date.unix,
+            tz: base.tz,
+            micros: date.micros,
+        },
+    )
+    .ok()
 }
 
 /// Strip a leading weekday name and reparse the rest, advancing to the named
@@ -267,12 +275,12 @@ pub(crate) fn strip_weekday_prefix(s: &str) -> Option<(&str, i64)> {
             }
         }
     }
-    if s.len() > 3 {
-        if let Some(dn) = lookups::day_of_week(&s[..3]) {
-            let r = s[3..].trim_start_matches([',', ' ']);
-            if !r.is_empty() {
-                return Some((r, dn as i64));
-            }
+    if s.len() > 3
+        && let Some(dn) = lookups::day_of_week(&s[..3])
+    {
+        let r = s[3..].trim_start_matches([',', ' ']);
+        if !r.is_empty() {
+            return Some((r, dn as i64));
         }
     }
     None
@@ -352,7 +360,14 @@ fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
         while j < nb.len() && !is_op(nb[j]) {
             j += 1;
         }
-        result = eval(&n[start..j], Moment { unix: result.unix, tz: base.tz, micros: result.micros })?;
+        result = eval(
+            &n[start..j],
+            Moment {
+                unix: result.unix,
+                tz: base.tz,
+                micros: result.micros,
+            },
+        )?;
         if j >= nb.len() {
             break;
         }
@@ -387,10 +402,10 @@ fn try_unix_timestamp(s: &str, mut tz: Tz) -> Result<Option<Moment>, Error> {
 
     let unix: i64 = int_str.parse().map_err(|_| Error::InvalidNumber)?;
 
-    if !tz_part.is_empty() {
-        if let Some(t) = tz::parse_timezone(tz_part) {
-            tz = t;
-        }
+    if !tz_part.is_empty()
+        && let Some(t) = tz::parse_timezone(tz_part)
+    {
+        tz = t;
     }
 
     Ok(Some(Moment { unix, tz, micros }))
@@ -402,10 +417,10 @@ pub(crate) fn frac_to_micros(frac_digits: &str) -> u32 {
     let mut micros = 0u32;
     for i in 0..6 {
         micros *= 10;
-        if let Some(c) = frac_digits.as_bytes().get(i) {
-            if c.is_ascii_digit() {
-                micros += (c - b'0') as u32;
-            }
+        if let Some(c) = frac_digits.as_bytes().get(i)
+            && c.is_ascii_digit()
+        {
+            micros += (c - b'0') as u32;
         }
     }
     micros

@@ -85,7 +85,7 @@ pub const fn days_in_month(year: i64, month: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::civil::*;
 
     #[test]
     fn epoch_roundtrip() {

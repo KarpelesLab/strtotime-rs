@@ -49,7 +49,9 @@ impl DateTime {
     /// The instant as **microseconds** since the Unix epoch, including the
     /// sub-second [`micros`](DateTime::micros) component.
     pub fn unix_micros(&self) -> i64 {
-        self.unix().wrapping_mul(1_000_000).wrapping_add(self.micros as i64)
+        self.unix()
+            .wrapping_mul(1_000_000)
+            .wrapping_add(self.micros as i64)
     }
 
     /// Day of week, 0 = Sunday .. 6 = Saturday.

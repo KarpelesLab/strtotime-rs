@@ -1,7 +1,9 @@
 //! Extended/long-tail formats — port of `extended_formats.go`.
 
-use crate::civil::{days_in_month, weekday_from_days, days_from_civil};
-use crate::lookups::{apply_ampm, day_of_week, month_by_name, normalize_unit, two_digit_year, Unit};
+use crate::civil::{days_from_civil, days_in_month, weekday_from_days};
+use crate::lookups::{
+    Unit, apply_ampm, day_of_week, month_by_name, normalize_unit, two_digit_year,
+};
 use crate::parsers::formats::{
     atoi, collect_fields, is_all_digits, is_valid_time, mk, mk_frac, parse_iso, tail_from,
 };
@@ -16,11 +18,7 @@ fn is_alpha(s: &str) -> bool {
 }
 
 fn fixed(off: i32) -> Tz {
-    if off == 0 {
-        Tz::Utc
-    } else {
-        Tz::Fixed(off)
-    }
+    if off == 0 { Tz::Utc } else { Tz::Fixed(off) }
 }
 
 /// "26th" → "26", "1st" → "1"; otherwise unchanged. Mirrors `stripOrdinalSuffix`.
@@ -77,14 +75,17 @@ pub fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
     let hour = atoi(&digits[8..10]);
     let minute = atoi(&digits[10..12]);
     let second = atoi(&digits[12..14]);
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || !is_valid_time(hour, minute, second) {
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || !is_valid_time(hour, minute, second)
+    {
         return None;
     }
     let mut tz = base.tz;
-    if !tz_str.is_empty() {
-        if let Some(t) = tz::parse_timezone(tz_str) {
-            tz = t;
-        }
+    if !tz_str.is_empty()
+        && let Some(t) = tz::parse_timezone(tz_str)
+    {
+        tz = t;
     }
     Some(mk(tz, year, month, day, hour, minute, second))
 }
@@ -96,16 +97,28 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
     let now = base.wall();
 
     // "tHHMM"
-    if b.len() >= 5 && (b[0] == b't' || b[0] == b'T') && b[1..5].iter().all(|c| c.is_ascii_digit()) {
+    if b.len() >= 5 && (b[0] == b't' || b[0] == b'T') && b[1..5].iter().all(|c| c.is_ascii_digit())
+    {
         let hour = atoi(&s[1..3]);
         let minute = atoi(&s[3..5]);
         if is_valid_time(hour, minute, 0) {
-            return Some(mk(base.tz, now.year, now.month as i64, now.day as i64, hour, minute, 0));
+            return Some(mk(
+                base.tz,
+                now.year,
+                now.month as i64,
+                now.day as i64,
+                hour,
+                minute,
+                0,
+            ));
         }
     }
 
     // Dotted "HH.MM.SS[.frac][TZ]"
-    if b.len() >= 8 && b[2] == b'.' && b[5] == b'.' && b[0..2].iter().all(|c| c.is_ascii_digit())
+    if b.len() >= 8
+        && b[2] == b'.'
+        && b[5] == b'.'
+        && b[0..2].iter().all(|c| c.is_ascii_digit())
         && b[3..5].iter().all(|c| c.is_ascii_digit())
         && b[6].is_ascii_digit()
     {
@@ -131,12 +144,21 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
         let mut tz = base.tz;
         if pos < b.len() {
             let tz_str = s[pos..].trim();
-            match tz::parse_timezone(tz_str) {
-                Some(t) => tz = t,
-                None => return None,
+            {
+                let t = tz::parse_timezone(tz_str)?;
+                tz = t
             }
         }
-        return Some(mk_frac(tz, now.year, now.month as i64, now.day as i64, hour, minute, second, micros));
+        return Some(mk_frac(
+            tz,
+            now.year,
+            now.month as i64,
+            now.day as i64,
+            hour,
+            minute,
+            second,
+            micros,
+        ));
     }
 
     if !is_all_digits(s) {
@@ -149,7 +171,15 @@ pub fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
         let minute = atoi(&s[2..4]);
         let second = atoi(&s[4..6]);
         if is_valid_time(hour, minute, second) {
-            return Some(mk(base.tz, now.year, now.month as i64, now.day as i64, hour, minute, second));
+            return Some(mk(
+                base.tz,
+                now.year,
+                now.month as i64,
+                now.day as i64,
+                hour,
+                minute,
+                second,
+            ));
         }
     }
 
@@ -184,36 +214,38 @@ pub fn parse_month_name_format(s: &str, base: Moment) -> Option<Moment> {
     }
 
     // Jan-15-2006
-    if is_alpha(p0) && p0.len() >= 3 {
-        if let (Some(day), Some(year)) = (parse_int(p1), parse_int(p2)) {
-            if let Some(m) = month_by_name(p0) {
-                if is_valid_date(year, m as i64, day) {
-                    return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
-                }
-            }
-        }
+    if is_alpha(p0)
+        && p0.len() >= 3
+        && let (Some(day), Some(year)) = (parse_int(p1), parse_int(p2))
+        && let Some(m) = month_by_name(p0)
+        && is_valid_date(year, m as i64, day)
+    {
+        return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
     }
     // 2006-Jan-15
-    if p0.len() == 4 && is_alpha(p1) && p1.len() >= 3 {
-        if let (Some(year), Some(day)) = (parse_int(p0), parse_int(p2)) {
-            if let Some(m) = month_by_name(p1) {
-                if is_valid_date(year, m as i64, day) {
-                    return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
-                }
-            }
-        }
+    if p0.len() == 4
+        && is_alpha(p1)
+        && p1.len() >= 3
+        && let (Some(year), Some(day)) = (parse_int(p0), parse_int(p2))
+        && let Some(m) = month_by_name(p1)
+        && is_valid_date(year, m as i64, day)
+    {
+        return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
     }
     // 15-Jan-2006 (or 2-digit year)
-    if is_all_digits(p0) && is_alpha(p1) && p1.len() >= 3 && is_all_digits(p2) {
-        if let (Some(day), Some(mut year)) = (parse_int(p0), parse_int(p2)) {
-            if year < 100 {
-                year = two_digit_year(year);
-            }
-            if let Some(m) = month_by_name(p1) {
-                if is_valid_date(year, m as i64, day) {
-                    return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
-                }
-            }
+    if is_all_digits(p0)
+        && is_alpha(p1)
+        && p1.len() >= 3
+        && is_all_digits(p2)
+        && let (Some(day), Some(mut year)) = (parse_int(p0), parse_int(p2))
+    {
+        if year < 100 {
+            year = two_digit_year(year);
+        }
+        if let Some(m) = month_by_name(p1)
+            && is_valid_date(year, m as i64, day)
+        {
+            return Some(mk(base.tz, year, m as i64, day, 0, 0, 0));
         }
     }
     None
@@ -352,22 +384,23 @@ pub fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
     idx += 1;
 
     let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
-    if idx < n && fields[idx].contains(':') {
-        if let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[idx]) {
-            hour = h as i64;
-            minute = m as i64;
-            second = sec as i64;
-            let timef = fields[idx];
+    if idx < n
+        && fields[idx].contains(':')
+        && let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[idx])
+    {
+        hour = h as i64;
+        minute = m as i64;
+        second = sec as i64;
+        let timef = fields[idx];
+        idx += 1;
+        let remaining = &timef[consumed..];
+        if let Some(ap) = ampm_of(remaining) {
+            hour = apply_ampm(hour, ap);
+        } else if idx < n
+            && let Some(ap) = ampm_of(fields[idx])
+        {
+            hour = apply_ampm(hour, ap);
             idx += 1;
-            let remaining = &timef[consumed..];
-            if let Some(ap) = ampm_of(remaining) {
-                hour = apply_ampm(hour, ap);
-            } else if idx < n {
-                if let Some(ap) = ampm_of(fields[idx]) {
-                    hour = apply_ampm(hour, ap);
-                    idx += 1;
-                }
-            }
         }
     }
 
@@ -443,19 +476,20 @@ fn parse_day_month_year_compact(s: &str, base: Moment) -> Option<Moment> {
     }
 
     let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
-    if n > 1 && fields[1].contains(':') {
-        if let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[1]) {
-            hour = h as i64;
-            minute = m as i64;
-            second = sec as i64;
-            let remaining = &fields[1][consumed..];
-            if let Some(ap) = ampm_of(remaining) {
-                hour = apply_ampm(hour, ap);
-            } else if n > 2 {
-                if let Some(ap) = ampm_of(fields[2]) {
-                    hour = apply_ampm(hour, ap);
-                }
-            }
+    if n > 1
+        && fields[1].contains(':')
+        && let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[1])
+    {
+        hour = h as i64;
+        minute = m as i64;
+        second = sec as i64;
+        let remaining = &fields[1][consumed..];
+        if let Some(ap) = ampm_of(remaining) {
+            hour = apply_ampm(hour, ap);
+        } else if n > 2
+            && let Some(ap) = ampm_of(fields[2])
+        {
+            hour = apply_ampm(hour, ap);
         }
     }
     if !(1..=31).contains(&day) {
@@ -475,19 +509,17 @@ pub fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
     if n != 2 {
         return None;
     }
-    if let Some(m) = month_by_name(fields[0]) {
-        if let Some(year) = parse_int(fields[1]) {
-            if year >= 100 || fields[1].len() >= 4 {
-                return Some(mk(base.tz, year, m as i64, 1, 0, 0, 0));
-            }
-        }
+    if let Some(m) = month_by_name(fields[0])
+        && let Some(year) = parse_int(fields[1])
+        && (year >= 100 || fields[1].len() >= 4)
+    {
+        return Some(mk(base.tz, year, m as i64, 1, 0, 0, 0));
     }
-    if let Some(year) = parse_int(fields[0]) {
-        if year >= 100 || fields[0].len() >= 4 {
-            if let Some(m) = month_by_name(fields[1]) {
-                return Some(mk(base.tz, year, m as i64, 1, 0, 0, 0));
-            }
-        }
+    if let Some(year) = parse_int(fields[0])
+        && (year >= 100 || fields[0].len() >= 4)
+        && let Some(m) = month_by_name(fields[1])
+    {
+        return Some(mk(base.tz, year, m as i64, 1, 0, 0, 0));
     }
     None
 }
@@ -554,37 +586,45 @@ pub fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
 
     if let Some(t) = parse_iso(date_str, base) {
         let w = t.wall();
-        return Some(mk(base.tz, w.year, w.month as i64, w.day as i64, hour, minute, second));
+        return Some(mk(
+            base.tz,
+            w.year,
+            w.month as i64,
+            w.day as i64,
+            hour,
+            minute,
+            second,
+        ));
     }
 
     let mut df = [""; NF];
     let dn = collect_fields(date_str, &mut df);
-    if dn >= 2 {
-        if let Some(month) = month_by_name(df[0]) {
-            let day_str = strip_ordinal_suffix(df[1].trim_end_matches(','));
-            if let Some(day) = parse_int(day_str) {
-                if (1..=31).contains(&day) {
-                    let mut year = base.wall().year;
-                    let mut tz = base.tz;
-                    let mut fidx = 2;
-                    while fidx < dn {
-                        if let Some(y) = parse_int(df[fidx]) {
-                            if y > 0 {
-                                year = y;
-                                fidx += 1;
-                                continue;
-                            }
-                        }
-                        if let Some(t) = tz::parse_timezone(df[fidx]) {
-                            tz = t;
-                            fidx += 1;
-                            continue;
-                        }
-                        break;
-                    }
-                    return Some(mk(tz, year, month as i64, day, hour, minute, second));
+    if dn >= 2
+        && let Some(month) = month_by_name(df[0])
+    {
+        let day_str = strip_ordinal_suffix(df[1].trim_end_matches(','));
+        if let Some(day) = parse_int(day_str)
+            && (1..=31).contains(&day)
+        {
+            let mut year = base.wall().year;
+            let mut tz = base.tz;
+            let mut fidx = 2;
+            while fidx < dn {
+                if let Some(y) = parse_int(df[fidx])
+                    && y > 0
+                {
+                    year = y;
+                    fidx += 1;
+                    continue;
                 }
+                if let Some(t) = tz::parse_timezone(df[fidx]) {
+                    tz = t;
+                    fidx += 1;
+                    continue;
+                }
+                break;
             }
+            return Some(mk(tz, year, month as i64, day, hour, minute, second));
         }
     }
 
@@ -610,12 +650,20 @@ pub fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
         let remaining = &fields[1][consumed..];
         if let Some(ap) = ampm_of(remaining) {
             hour = apply_ampm(hour, ap);
-        } else if n >= 3 {
-            if let Some(ap) = ampm_of(fields[2]) {
-                hour = apply_ampm(hour, ap);
-            }
+        } else if n >= 3
+            && let Some(ap) = ampm_of(fields[2])
+        {
+            hour = apply_ampm(hour, ap);
         }
-        return Some(mk(base.tz, w.year, w.month as i64, w.day as i64, hour, m as i64, sec as i64));
+        return Some(mk(
+            base.tz,
+            w.year,
+            w.month as i64,
+            w.day as i64,
+            hour,
+            m as i64,
+            sec as i64,
+        ));
     }
     None
 }
@@ -642,58 +690,77 @@ pub fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Moment> {
     if rest.starts_with('+') || rest.starts_with('-') {
         let mut f = [""; NF];
         let n = collect_fields(rest, &mut f);
-        if n == 2 {
-            if let Some(amount) = parse_int(f[0]) {
-                let unit = normalize_unit(f[1]);
-                let refm = match unit {
-                    Some(Unit::Month) => apply_offset(base, amount, Unit::Month),
-                    Some(Unit::Year) => apply_offset(base, amount, Unit::Year),
-                    _ => return None,
-                };
-                let rw = refm.wall();
-                let day = if is_first { 1 } else { days_in_month(rw.year, rw.month as i64) };
-                return Some(mk(base.tz, rw.year, rw.month as i64, day, now.hour as i64, now.minute as i64, now.second as i64));
-            }
+        if n == 2
+            && let Some(amount) = parse_int(f[0])
+        {
+            let unit = normalize_unit(f[1]);
+            let refm = match unit {
+                Some(Unit::Month) => apply_offset(base, amount, Unit::Month),
+                Some(Unit::Year) => apply_offset(base, amount, Unit::Year),
+                _ => return None,
+            };
+            let rw = refm.wall();
+            let day = if is_first {
+                1
+            } else {
+                days_in_month(rw.year, rw.month as i64)
+            };
+            return Some(mk(
+                base.tz,
+                rw.year,
+                rw.month as i64,
+                day,
+                now.hour as i64,
+                now.minute as i64,
+                now.second as i64,
+            ));
         }
     }
 
     // YYYY-MM
     if let Some(t) = crate::parsers::formats::parse_year_month(rest, base) {
         let w = t.wall();
-        let day = if is_first { 1 } else { days_in_month(w.year, w.month as i64) };
+        let day = if is_first {
+            1
+        } else {
+            days_in_month(w.year, w.month as i64)
+        };
         return Some(mk(base.tz, w.year, w.month as i64, day, 0, 0, 0));
     }
 
     // Month name [year] [time]
     let mut f = [""; NF];
     let n = collect_fields(rest, &mut f);
-    if n >= 1 {
-        if let Some(month) = month_by_name(f[0]) {
-            let mut idx = 1;
-            let mut year = now.year;
-            if idx < n {
-                if let Some(y) = parse_int(f[idx]) {
-                    year = y;
-                    idx += 1;
-                }
-            }
-            let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
-            if idx < n {
-                if let Some((h, m, sec, consumed)) = tz::parse_flex_time(f[idx]) {
-                    if consumed == f[idx].len() {
-                        hour = h as i64;
-                        minute = m as i64;
-                        second = sec as i64;
-                        idx += 1;
-                    }
-                }
-            }
-            if idx != n {
-                return None;
-            }
-            let day = if is_first { 1 } else { days_in_month(year, month as i64) };
-            return Some(mk(base.tz, year, month as i64, day, hour, minute, second));
+    if n >= 1
+        && let Some(month) = month_by_name(f[0])
+    {
+        let mut idx = 1;
+        let mut year = now.year;
+        if idx < n
+            && let Some(y) = parse_int(f[idx])
+        {
+            year = y;
+            idx += 1;
         }
+        let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
+        if idx < n
+            && let Some((h, m, sec, consumed)) = tz::parse_flex_time(f[idx])
+            && consumed == f[idx].len()
+        {
+            hour = h as i64;
+            minute = m as i64;
+            second = sec as i64;
+            idx += 1;
+        }
+        if idx != n {
+            return None;
+        }
+        let day = if is_first {
+            1
+        } else {
+            days_in_month(year, month as i64)
+        };
+        return Some(mk(base.tz, year, month as i64, day, hour, minute, second));
     }
 
     None
@@ -717,19 +784,20 @@ pub fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
     let month = month_by_name(f[1])? as i64;
     let mut year = base.wall().year;
     let mut idx = 2;
-    if idx < n {
-        if let Some(y) = parse_int(f[idx]) {
-            year = y;
-            idx += 1;
-        }
+    if idx < n
+        && let Some(y) = parse_int(f[idx])
+    {
+        year = y;
+        idx += 1;
     }
     let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
-    if idx < n && f[idx].contains(':') {
-        if let Some((h, m, sec, _)) = tz::parse_flex_time(f[idx]) {
-            hour = h as i64;
-            minute = m as i64;
-            second = sec as i64;
-        }
+    if idx < n
+        && f[idx].contains(':')
+        && let Some((h, m, sec, _)) = tz::parse_flex_time(f[idx])
+    {
+        hour = h as i64;
+        minute = m as i64;
+        second = sec as i64;
     }
     Some(mk(base.tz, year, month, day, hour, minute, second))
 }
@@ -755,7 +823,9 @@ pub fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment> {
     }
     let (h, m, sec, _) = tz::parse_flex_time(f[2])?;
     let year = parse_int(f[3])?;
-    Some(mk(base.tz, year, month, day, h as i64, m as i64, sec as i64))
+    Some(mk(
+        base.tz, year, month, day, h as i64, m as i64, sec as i64,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -785,8 +855,12 @@ pub fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment> {
                 if rc != 2 {
                     continue;
                 }
-                let Some(amount) = parse_int(rf[0]) else { continue };
-                let Some(unit) = normalize_unit(rf[1]) else { continue };
+                let Some(amount) = parse_int(rf[0]) else {
+                    continue;
+                };
+                let Some(unit) = normalize_unit(rf[1]) else {
+                    continue;
+                };
                 if rn < NF {
                     rels[rn] = (amount, unit);
                     rn += 1;
@@ -866,12 +940,28 @@ pub fn parse_front_back_of(s: &str, base: Moment) -> Option<Moment> {
         if ampm == "pm" {
             hour += 12;
         }
-        return Some(mk(base.tz, now.year, now.month as i64, now.day as i64, hour - 1, 45, 0));
+        return Some(mk(
+            base.tz,
+            now.year,
+            now.month as i64,
+            now.day as i64,
+            hour - 1,
+            45,
+            0,
+        ));
     }
     if !ampm.is_empty() {
         hour = apply_ampm(hour, ampm);
     }
-    Some(mk(base.tz, now.year, now.month as i64, now.day as i64, hour, 15, 0))
+    Some(mk(
+        base.tz,
+        now.year,
+        now.month as i64,
+        now.day as i64,
+        hour,
+        15,
+        0,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -880,8 +970,18 @@ pub fn parse_front_back_of(s: &str, base: Moment) -> Option<Moment> {
 
 fn roman_month(s: &str) -> Option<i64> {
     const T: &[(&str, i64)] = &[
-        ("i", 1), ("ii", 2), ("iii", 3), ("iv", 4), ("v", 5), ("vi", 6),
-        ("vii", 7), ("viii", 8), ("ix", 9), ("x", 10), ("xi", 11), ("xii", 12),
+        ("i", 1),
+        ("ii", 2),
+        ("iii", 3),
+        ("iv", 4),
+        ("v", 5),
+        ("vi", 6),
+        ("vii", 7),
+        ("viii", 8),
+        ("ix", 9),
+        ("x", 10),
+        ("xi", 11),
+        ("xii", 12),
     ];
     for (n, m) in T {
         if s.eq_ignore_ascii_case(n) {
@@ -927,10 +1027,30 @@ fn parse_ordinal_prefix(fields: &[&str], idx: usize) -> Option<(i64, bool, usize
         return Some((nv, false, idx + 1));
     }
     const WORDS: &[(&str, i64)] = &[
-        ("first", 1), ("1st", 1), ("second", 2), ("2nd", 2), ("third", 3), ("3rd", 3),
-        ("fourth", 4), ("4th", 4), ("fifth", 5), ("5th", 5), ("sixth", 6), ("6th", 6),
-        ("seventh", 7), ("7th", 7), ("eighth", 8), ("8th", 8), ("ninth", 9), ("9th", 9),
-        ("tenth", 10), ("10th", 10), ("eleventh", 11), ("11th", 11), ("twelfth", 12), ("12th", 12),
+        ("first", 1),
+        ("1st", 1),
+        ("second", 2),
+        ("2nd", 2),
+        ("third", 3),
+        ("3rd", 3),
+        ("fourth", 4),
+        ("4th", 4),
+        ("fifth", 5),
+        ("5th", 5),
+        ("sixth", 6),
+        ("6th", 6),
+        ("seventh", 7),
+        ("7th", 7),
+        ("eighth", 8),
+        ("8th", 8),
+        ("ninth", 9),
+        ("9th", 9),
+        ("tenth", 10),
+        ("10th", 10),
+        ("eleventh", 11),
+        ("11th", 11),
+        ("twelfth", 12),
+        ("12th", 12),
     ];
     for (w, v) in WORDS {
         if fields[idx].eq_ignore_ascii_case(w) {
@@ -959,11 +1079,10 @@ pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
     let (ordinal, mut is_word, mut idx) = parse_ordinal_prefix(fields, 0)?;
 
     // "+N week(s) ..." — skip the unit after a numeric ordinal.
-    if idx < n
-        && normalize_unit(fields[idx]) == Some(Unit::Week) {
-            is_word = true;
-            idx += 1;
-        }
+    if idx < n && normalize_unit(fields[idx]) == Some(Unit::Week) {
+        is_word = true;
+        idx += 1;
+    }
 
     if idx >= n {
         return None;
@@ -1038,16 +1157,15 @@ pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
 
     let (mut th, mut tm, mut ts) = (0i64, 0i64, 0i64);
     let mut has_time = false;
-    if idx < n {
-        if let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[idx]) {
-            if consumed == fields[idx].len() {
-                th = h as i64;
-                tm = m as i64;
-                ts = sec as i64;
-                has_time = true;
-                idx += 1;
-            }
-        }
+    if idx < n
+        && let Some((h, m, sec, consumed)) = tz::parse_flex_time(fields[idx])
+        && consumed == fields[idx].len()
+    {
+        th = h as i64;
+        tm = m as i64;
+        ts = sec as i64;
+        has_time = true;
+        idx += 1;
     }
 
     if idx != n {
@@ -1109,5 +1227,13 @@ pub fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
         mi = tm;
         sec = ts;
     }
-    Some(mk(base.tz, year + relative_years, month, result_day, h, mi, sec))
+    Some(mk(
+        base.tz,
+        year + relative_years,
+        month,
+        result_day,
+        h,
+        mi,
+        sec,
+    ))
 }

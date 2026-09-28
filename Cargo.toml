@@ -1,8 +1,8 @@
 [package]
 name = "strtotime"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.81"
+edition = "2024"
+rust-version = "1.89"
 license = "MIT"
 description = "no_std, no-alloc parser for PHP-style date/time expressions (\"next week\", \"+2 days\", \"2023-05-15\", \"@unixts\") into a Unix timestamp. Optional IANA timezone and std support."
 repository = "https://github.com/KarpelesLab/strtotime-rs"
@@ -21,10 +21,10 @@ iana = ["dep:timezone-data"]
 std = []
 
 [dependencies]
-timezone-data = { version = "0.2", path = "../timezone-data-rs", optional = true }
+timezone-data = { version = "0.2", optional = true }
 
 [dev-dependencies]
-timezone-data = { version = "0.2", path = "../timezone-data-rs" }
+timezone-data = "0.2"
 
 [lints.rust]
 unsafe_code = "forbid"

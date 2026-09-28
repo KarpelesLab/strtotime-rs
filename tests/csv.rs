@@ -11,7 +11,7 @@
 //! These tests require the `iana` feature (default) to resolve named zones.
 #![cfg(feature = "iana")]
 
-use strtotime::{strtotime, strtotime_micros, Tz};
+use strtotime::{Tz, strtotime, strtotime_micros};
 
 /// Minimum number of success rows that must pass. Raise as formats land.
 const MIN_PASS: usize = 669;
@@ -110,9 +110,14 @@ fn csv_success() {
         let expected: i64 = rec[3].parse().expect("expected_unix");
         let expected_micros: i64 = rec.get(4).and_then(|s| s.parse().ok()).unwrap_or(0);
         // Wrapping mirrors DateTime::unix_micros (extreme years overflow i64).
-        let expected_full = expected.wrapping_mul(1_000_000).wrapping_add(expected_micros);
+        let expected_full = expected
+            .wrapping_mul(1_000_000)
+            .wrapping_add(expected_micros);
 
-        match (strtotime(input, base, tz), strtotime_micros(input, base, tz)) {
+        match (
+            strtotime(input, base, tz),
+            strtotime_micros(input, base, tz),
+        ) {
             (Ok(got), Ok(got_us)) if got == expected && got_us == expected_full => pass += 1,
             (other, other_us) => {
                 if shown < 40 {
@@ -160,7 +165,10 @@ fn csv_invalid() {
             Err(_) => correct += 1,
             Ok(got) => {
                 if shown < 40 {
-                    eprintln!("SHOULD-ERR {input:?} (base={base}, tz={:?}) = {got}", rec[2]);
+                    eprintln!(
+                        "SHOULD-ERR {input:?} (base={base}, tz={:?}) = {got}",
+                        rec[2]
+                    );
                     shown += 1;
                 }
             }

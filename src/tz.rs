@@ -39,6 +39,8 @@ impl core::fmt::Debug for Tz {
 impl Tz {
     /// The offset (seconds east of UTC) in effect at the given UTC instant.
     pub fn offset_at(&self, unix: i64) -> i32 {
+        #[cfg(not(feature = "iana"))]
+        let _ = unix;
         match self {
             Tz::Utc => 0,
             Tz::Fixed(o) => *o,
@@ -95,7 +97,11 @@ pub(crate) struct Moment {
 impl Moment {
     /// A moment at `unix` seconds in `tz` with no sub-second component.
     pub fn new(unix: i64, tz: Tz) -> Moment {
-        Moment { unix, tz, micros: 0 }
+        Moment {
+            unix,
+            tz,
+            micros: 0,
+        }
     }
 
     /// The wall-clock representation in this moment's zone.
@@ -118,7 +124,11 @@ impl Moment {
 
     /// Same instant (and sub-second component), reinterpreted in a different zone.
     pub fn in_tz(self, tz: Tz) -> Moment {
-        Moment { unix: self.unix, tz, micros: self.micros }
+        Moment {
+            unix: self.unix,
+            tz,
+            micros: self.micros,
+        }
     }
 }
 
@@ -307,7 +317,13 @@ pub fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
     let two = |r: &[u8], i: usize| ((r[i] - b'0') as i32) * 10 + (r[i + 1] - b'0') as i32;
 
     // +HH:MM
-    if rest.len() >= 5 && rest[2] == b':' && is_digit(rest[0]) && is_digit(rest[1]) && is_digit(rest[3]) && is_digit(rest[4]) {
+    if rest.len() >= 5
+        && rest[2] == b':'
+        && is_digit(rest[0])
+        && is_digit(rest[1])
+        && is_digit(rest[3])
+        && is_digit(rest[4])
+    {
         let h = two(rest, 0);
         let m = two(rest, 3);
         if h <= 14 && m <= 59 {
@@ -329,7 +345,12 @@ pub fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
         }
     }
     // +HHMM
-    if rest.len() >= 4 && is_digit(rest[0]) && is_digit(rest[1]) && is_digit(rest[2]) && is_digit(rest[3]) {
+    if rest.len() >= 4
+        && is_digit(rest[0])
+        && is_digit(rest[1])
+        && is_digit(rest[2])
+        && is_digit(rest[3])
+    {
         let h = two(rest, 0);
         let m = two(rest, 2);
         if h <= 14 && m <= 59 {
@@ -337,19 +358,24 @@ pub fn parse_numeric_offset(s: &str) -> Option<(i32, usize)> {
         }
     }
     // +HH
-    if rest.len() >= 2 && is_digit(rest[0]) && is_digit(rest[1]) && (rest.len() == 2 || !is_digit(rest[2])) {
+    if rest.len() >= 2
+        && is_digit(rest[0])
+        && is_digit(rest[1])
+        && (rest.len() == 2 || !is_digit(rest[2]))
+    {
         let h = two(rest, 0);
         if h <= 14 {
             return Some((sign * h * 3600, 3));
         }
     }
     // flexible +H:M
-    if !rest.is_empty() && is_digit(rest[0]) {
-        if let Some((h, m, _s, consumed)) = parse_flex_time(core::str::from_utf8(rest).ok()?) {
-            if h <= 14 && m <= 59 {
-                return Some((sign * (h * 3600 + m * 60), consumed + 1));
-            }
-        }
+    if !rest.is_empty()
+        && is_digit(rest[0])
+        && let Some((h, m, _s, consumed)) = parse_flex_time(core::str::from_utf8(rest).ok()?)
+        && h <= 14
+        && m <= 59
+    {
+        return Some((sign * (h * 3600 + m * 60), consumed + 1));
     }
 
     None

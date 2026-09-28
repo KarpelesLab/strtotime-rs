@@ -82,7 +82,11 @@ pub fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
             if len >= MAX_TOKENS {
                 return Err(Error::TooLong);
             }
-            buf[len] = Token { val: &s[start..i], typ: cur, pos: start };
+            buf[len] = Token {
+                val: &s[start..i],
+                typ: cur,
+                pos: start,
+            };
             len += 1;
             cur = nt;
             start = i;
@@ -92,7 +96,11 @@ pub fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
     if len >= MAX_TOKENS {
         return Err(Error::TooLong);
     }
-    buf[len] = Token { val: &s[start..], typ: cur, pos: start };
+    buf[len] = Token {
+        val: &s[start..],
+        typ: cur,
+        pos: start,
+    };
     len += 1;
 
     Ok(Tokens { buf, len })

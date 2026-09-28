@@ -18,7 +18,16 @@ pub(crate) fn mk(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64) -> Mo
 
 /// Build a moment from civil wall fields plus a microsecond component.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn mk_frac(tz: Tz, y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64, micros: u32) -> Moment {
+pub(crate) fn mk_frac(
+    tz: Tz,
+    y: i64,
+    mo: i64,
+    d: i64,
+    h: i64,
+    mi: i64,
+    s: i64,
+    micros: u32,
+) -> Moment {
     Moment::from_civil_frac(tz, Civil::new(y, mo, d, h, mi, s), micros)
 }
 
@@ -96,7 +105,10 @@ pub fn pipeline(s: &str, base: Moment) -> Option<Moment> {
     }
 
     attempt!(digit, parse_european(s, base));
-    attempt!(s.starts_with("front of ") || s.starts_with("back of "), ext::parse_front_back_of(s, base));
+    attempt!(
+        s.starts_with("front of ") || s.starts_with("back of "),
+        ext::parse_front_back_of(s, base)
+    );
     attempt!(digit, ext::parse_roman_numeral_date(s, base));
     attempt!(s.starts_with("0000-00-00"), parse_zero_date(s, base));
     attempt!(first == b'-' || first == b'+', parse_signed_year(s, base));
@@ -153,7 +165,11 @@ pub fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
         month = second;
         year = third;
     } else {
-        year = if first < 100 { two_digit_year(first) } else { first };
+        year = if first < 100 {
+            two_digit_year(first)
+        } else {
+            first
+        };
         month = second;
         day = third;
     }
@@ -207,11 +223,7 @@ pub fn parse_european(s: &str, base: Moment) -> Option<Moment> {
     let (day, month) = (atoi(p0), atoi(p1));
     let year = {
         let y = atoi(p2);
-        if y < 100 {
-            two_digit_year(y)
-        } else {
-            y
-        }
+        if y < 100 { two_digit_year(y) } else { y }
     };
     if !is_valid_date(year, month, day) {
         return None;
@@ -384,7 +396,15 @@ pub fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> {
         return None;
     }
     let tz = Tz::Fixed((-tz_offset * 3600) as i32);
-    Some(mk(tz, now.year, now.month as i64, now.day as i64, hour, minute, second))
+    Some(mk(
+        tz,
+        now.year,
+        now.month as i64,
+        now.day as i64,
+        hour,
+        minute,
+        second,
+    ))
 }
 
 /// `YYYY-MM-DD HH:MM:SS [TZ]` (and month-name dates via the extended parser,
@@ -407,9 +427,14 @@ pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
         };
         rest = rest[..rest.len() - 4].trim();
     } else if rest.len() >= 2
-        && (rest[rest.len() - 2..].eq_ignore_ascii_case("am") || rest[rest.len() - 2..].eq_ignore_ascii_case("pm"))
+        && (rest[rest.len() - 2..].eq_ignore_ascii_case("am")
+            || rest[rest.len() - 2..].eq_ignore_ascii_case("pm"))
     {
-        ampm = if rest[rest.len() - 2..].eq_ignore_ascii_case("am") { "am" } else { "pm" };
+        ampm = if rest[rest.len() - 2..].eq_ignore_ascii_case("am") {
+            "am"
+        } else {
+            "pm"
+        };
         rest = rest[..rest.len() - 2].trim();
     }
 
@@ -431,14 +456,22 @@ pub fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
                 return None;
             }
             tz = if off == 0 { Tz::Utc } else { Tz::Fixed(off) };
-        } else if let Some(t) = tz::parse_timezone(tz_rest) {
-            tz = t;
         } else {
-            return None;
+            let t = tz::parse_timezone(tz_rest)?;
+            tz = t;
         }
     }
 
-    Some(mk_frac(tz, dw.year, dw.month as i64, dw.day as i64, hour, minute, second, micros))
+    Some(mk_frac(
+        tz,
+        dw.year,
+        dw.month as i64,
+        dw.day as i64,
+        hour,
+        minute,
+        second,
+        micros,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +508,11 @@ pub fn parse_iso8601_time(s: &str) -> Option<(i64, i64, i64, u32, usize)> {
         minute = atoi(&s[2..4]);
         second = 0;
         consumed = 4;
-    } else if b.len() >= 2 && b[0].is_ascii_digit() && b[1].is_ascii_digit() && (b.len() == 2 || !b[2].is_ascii_digit()) {
+    } else if b.len() >= 2
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && (b.len() == 2 || !b[2].is_ascii_digit())
+    {
         hour = atoi(&s[..2]);
         minute = 0;
         second = 0;

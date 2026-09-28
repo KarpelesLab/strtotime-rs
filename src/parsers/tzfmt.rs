@@ -51,7 +51,15 @@ pub(crate) fn parse_iso_datetime_with_tz(s: &str, base: Moment) -> Option<Moment
     let date = parse_iso(date_part, base)?;
     let w = date.wall();
     let tz = tz::parse_timezone(tz_string)?;
-    Some(mk(tz, w.year, w.month as i64, w.day as i64, hour, minute, second))
+    Some(mk(
+        tz,
+        w.year,
+        w.month as i64,
+        w.day as i64,
+        hour,
+        minute,
+        second,
+    ))
 }
 
 /// `HH:MM[:SS] timezone` (date taken from base). Mirrors `parseTimeOnlyWithTimezone`.
@@ -72,7 +80,8 @@ fn parse_time_only_with_tz(s: &str, base: Moment) -> Option<Moment> {
     if it.next().is_some() {
         return None;
     }
-    if !(0..=23).contains(&h) || !(0..=59).contains(&m) || (count == 3 && !(0..=59).contains(&sec)) {
+    if !(0..=23).contains(&h) || !(0..=59).contains(&m) || (count == 3 && !(0..=59).contains(&sec))
+    {
         return None;
     }
     if !tz_chars_ok(tz_string) {
@@ -81,7 +90,15 @@ fn parse_time_only_with_tz(s: &str, base: Moment) -> Option<Moment> {
     let tz = tz::parse_timezone(tz_string)?;
     // Go uses time.Now(); we use the base date for determinism.
     let now = base.wall();
-    Some(mk(tz, now.year, now.month as i64, now.day as i64, h, m, sec))
+    Some(mk(
+        tz,
+        now.year,
+        now.month as i64,
+        now.day as i64,
+        h,
+        m,
+        sec,
+    ))
 }
 
 /// `MonthName Day Year [HH:MM[:SS]] Timezone`. Mirrors `parseFullDateTimeWithTimezone`.
@@ -111,8 +128,8 @@ fn parse_full_datetime_with_tz(s: &str, _base: Moment) -> Option<Moment> {
 
     let next = fields.next()?;
     let (mut hour, mut minute, mut second) = (0i64, 0i64, 0i64);
-    let tz_first;
-    if next.contains(':') {
+
+    let tz_first = if next.contains(':') {
         let mut it = next.split(':');
         hour = it.next()?.parse().ok()?;
         minute = it.next()?.parse().ok()?;
@@ -125,10 +142,10 @@ fn parse_full_datetime_with_tz(s: &str, _base: Moment) -> Option<Moment> {
         if !(0..=23).contains(&hour) || !(0..=59).contains(&minute) || !(0..=59).contains(&second) {
             return None;
         }
-        tz_first = fields.next()?;
+        fields.next()?
     } else {
-        tz_first = next;
-    }
+        next
+    };
 
     // The timezone is the remainder of the string from this field onward.
     let tz_string = tail_from(s, tz_first).trim();

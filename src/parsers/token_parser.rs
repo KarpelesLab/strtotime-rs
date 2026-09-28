@@ -10,7 +10,9 @@
 use crate::civil;
 use crate::datetime::Civil;
 use crate::error::Error;
-use crate::lookups::{apply_ampm, day_of_week, month_by_name, normalize_unit, ordinal_word_to_number, Unit};
+use crate::lookups::{
+    Unit, apply_ampm, day_of_week, month_by_name, normalize_unit, ordinal_word_to_number,
+};
 use crate::relmath::apply_offset;
 use crate::tokenizer::{TokType, Token};
 use crate::tz::{self, Moment, Tz};
@@ -90,85 +92,59 @@ impl<'a> Parser<'a> {
             if !self.tz_found && self.try_timezone() {
                 parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_first_last_day_of() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_first_last_day_of() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_next_last() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_next_last() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_bare_weekday() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_bare_weekday() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_relative_time() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_relative_time() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_implicit_relative_time() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_implicit_relative_time() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_weekday_ago() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_weekday_ago() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_ordinal_relative_time() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_ordinal_relative_time() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_time_expression() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_time_expression() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_bare_hour_ampm() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_bare_hour_ampm() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_time_keyword() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_time_keyword() {
+                self.result = t;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_month_only() {
-                    self.result = t;
-                    self.month_found = true;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_month_only() {
+                self.result = t;
+                self.month_found = true;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_month_name() {
-                    self.result = t;
-                    self.month_found = true;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_month_name() {
+                self.result = t;
+                self.month_found = true;
+                parsed = true;
             }
-            if !parsed {
-                if let Some(t) = self.try_year_only() {
-                    self.result = t;
-                    parsed = true;
-                }
+            if !parsed && let Some(t) = self.try_year_only() {
+                self.result = t;
+                parsed = true;
             }
 
             if !parsed && self.pos < self.toks.len() {
@@ -226,7 +202,11 @@ impl<'a> Parser<'a> {
                     month = second;
                     year = third;
                 } else {
-                    year = if first < 100 { crate::lookups::two_digit_year(first) } else { first };
+                    year = if first < 100 {
+                        crate::lookups::two_digit_year(first)
+                    } else {
+                        first
+                    };
                     month = second;
                     day = third;
                 }
@@ -247,7 +227,11 @@ impl<'a> Parser<'a> {
             "." => {
                 day = first;
                 month = second;
-                year = if third < 100 { crate::lookups::two_digit_year(third) } else { third };
+                year = if third < 100 {
+                    crate::lookups::two_digit_year(third)
+                } else {
+                    third
+                };
             }
             _ => return Ok(None),
         }
@@ -301,12 +285,11 @@ impl<'a> Parser<'a> {
         if self.pos + 2 < self.toks.len()
             && self.is(self.pos + 1, TokType::Whitespace)
             && self.is(self.pos + 2, TokType::Str)
+            && let Some(loc) = tz::parse_timezone(self.span(self.pos, self.pos + 2))
         {
-            if let Some(loc) = tz::parse_timezone(self.span(self.pos, self.pos + 2)) {
-                self.set_tz(loc);
-                self.pos += 3;
-                return true;
-            }
+            self.set_tz(loc);
+            self.pos += 3;
+            return true;
         }
 
         self.pos = start;
@@ -370,11 +353,7 @@ impl<'a> Parser<'a> {
                 (dn - cur + 7) % 7
             } else if is_next {
                 let d = (dn - cur + 7) % 7;
-                if d == 0 {
-                    7
-                } else {
-                    d
-                }
+                if d == 0 { 7 } else { d }
             } else {
                 let d = (cur - dn + 7) % 7;
                 let d = if d == 0 { 7 } else { d };
@@ -386,8 +365,16 @@ impl<'a> Parser<'a> {
         }
 
         match normalize_unit(unit) {
-            Some(Unit::Month) => Some(apply_offset(self.result, if is_next { 1 } else { -1 }, Unit::Month)),
-            Some(Unit::Year) => Some(apply_offset(self.result, if is_next { 1 } else { -1 }, Unit::Year)),
+            Some(Unit::Month) => Some(apply_offset(
+                self.result,
+                if is_next { 1 } else { -1 },
+                Unit::Month,
+            )),
+            Some(Unit::Year) => Some(apply_offset(
+                self.result,
+                if is_next { 1 } else { -1 },
+                Unit::Year,
+            )),
             // Invalid unit after next/last: Go returns (false, err) with the
             // direction+unit already consumed (no rollback).
             _ => None,
@@ -490,7 +477,10 @@ impl<'a> Parser<'a> {
             return None;
         }
         let name = self.val(self.pos);
-        let singular = name.strip_suffix('s').or_else(|| name.strip_suffix('S')).unwrap_or(name);
+        let singular = name
+            .strip_suffix('s')
+            .or_else(|| name.strip_suffix('S'))
+            .unwrap_or(name);
         let dn = day_of_week(singular).or_else(|| day_of_week(name));
         let Some(dn) = dn else {
             self.pos = start;
@@ -548,7 +538,8 @@ impl<'a> Parser<'a> {
             return None;
         }
         let colon = self.is(self.pos + 1, TokType::Operator) && self.val(self.pos + 1) == ":";
-        if !(self.is(self.pos, TokType::Number) && colon && self.is(self.pos + 2, TokType::Number)) {
+        if !(self.is(self.pos, TokType::Number) && colon && self.is(self.pos + 2, TokType::Number))
+        {
             return None;
         }
         let hour = parse_i64(self.val(self.pos)).ok()?;
@@ -569,11 +560,11 @@ impl<'a> Parser<'a> {
             && self.is(self.pos + 1, TokType::Number)
         {
             self.pos += 1;
-            if let Ok(s) = parse_i64(self.val(self.pos)) {
-                if (0..=59).contains(&s) {
-                    second = s;
-                    self.pos += 1;
-                }
+            if let Ok(s) = parse_i64(self.val(self.pos))
+                && (0..=59).contains(&s)
+            {
+                second = s;
+                self.pos += 1;
             }
         }
 
@@ -709,8 +700,19 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let day = if is_first { 1 } else { civil::days_in_month(year, month) };
-        Some(self.mk(year, month, day, w.hour as i64, w.minute as i64, w.second as i64))
+        let day = if is_first {
+            1
+        } else {
+            civil::days_in_month(year, month)
+        };
+        Some(self.mk(
+            year,
+            month,
+            day,
+            w.hour as i64,
+            w.minute as i64,
+            w.second as i64,
+        ))
     }
 
     // --- bare weekday & "weekday next/last week [time]" & "weekday month [year]"
@@ -731,7 +733,9 @@ impl<'a> Parser<'a> {
                 let saved = self.pos;
                 self.pos += 1;
                 self.skip_ws();
-                if self.is(self.pos, TokType::Str) && self.val(self.pos).eq_ignore_ascii_case("week") {
+                if self.is(self.pos, TokType::Str)
+                    && self.val(self.pos).eq_ignore_ascii_case("week")
+                {
                     self.pos += 1;
                     let w = self.result.wall();
                     let cur = w.weekday() as i64;
@@ -754,18 +758,16 @@ impl<'a> Parser<'a> {
                         && self.is(self.pos + 1, TokType::Operator)
                         && self.val(self.pos + 1) == ":"
                         && self.is(self.pos + 2, TokType::Number)
+                        && let Ok(h) = parse_i64(self.val(self.pos))
+                        && (0..=23).contains(&h)
                     {
-                        if let Ok(h) = parse_i64(self.val(self.pos)) {
-                            if (0..=23).contains(&h) {
-                                hour = h;
-                                self.pos += 2;
-                                if let Ok(m) = parse_i64(self.val(self.pos)) {
-                                    if (0..=59).contains(&m) {
-                                        minute = m;
-                                        self.pos += 1;
-                                    }
-                                }
-                            }
+                        hour = h;
+                        self.pos += 2;
+                        if let Ok(m) = parse_i64(self.val(self.pos))
+                            && (0..=59).contains(&m)
+                        {
+                            minute = m;
+                            self.pos += 1;
                         }
                     }
                     return Some(self.mk(rw.year, rw.month as i64, rw.day as i64, hour, minute, 0));
@@ -778,16 +780,14 @@ impl<'a> Parser<'a> {
                 self.pos += 1;
                 self.skip_ws();
                 let mut year = self.result.wall().year;
-                if self.is(self.pos, TokType::Number) {
-                    if let Ok(y) = parse_i64(self.val(self.pos)) {
-                        if y > 0 {
-                            year = y;
-                            self.pos += 1;
-                        }
-                    }
+                if self.is(self.pos, TokType::Number)
+                    && let Ok(y) = parse_i64(self.val(self.pos))
+                    && y > 0
+                {
+                    year = y;
+                    self.pos += 1;
                 }
-                let first_dow =
-                    civil::weekday_from_days(civil::days_from_civil(year, m as i64, 1));
+                let first_dow = civil::weekday_from_days(civil::days_from_civil(year, m as i64, 1));
                 let days_until = (dn - first_dow + 7) % 7;
                 let result_day = 1 + days_until;
                 return Some(self.mk(year, m as i64, result_day, 0, 0, 0));
@@ -873,7 +873,10 @@ impl<'a> Parser<'a> {
         // ordinal suffix
         if self.is(self.pos, TokType::Str) {
             let suf = self.val(self.pos);
-            if ["st", "nd", "rd", "th"].iter().any(|s| suf.eq_ignore_ascii_case(s)) {
+            if ["st", "nd", "rd", "th"]
+                .iter()
+                .any(|s| suf.eq_ignore_ascii_case(s))
+            {
                 self.pos += 1;
             }
         }
@@ -902,37 +905,35 @@ impl<'a> Parser<'a> {
             && self.is(self.pos + 1, TokType::Operator)
             && self.val(self.pos + 1) == ":"
             && self.is(self.pos + 2, TokType::Number)
+            && let Ok(h) = parse_i64(self.val(self.pos))
+            && (0..=23).contains(&h)
         {
-            if let Ok(h) = parse_i64(self.val(self.pos)) {
-                if (0..=23).contains(&h) {
-                    hour = h;
-                    self.pos += 2;
-                    if let Ok(m) = parse_i64(self.val(self.pos)) {
-                        if (0..=59).contains(&m) {
-                            minute = m;
-                            self.pos += 1;
-                            if self.pos + 1 < self.toks.len()
-                                && self.is(self.pos, TokType::Operator)
-                                && self.val(self.pos) == ":"
-                                && self.is(self.pos + 1, TokType::Number)
-                            {
-                                self.pos += 1;
-                                if let Ok(s) = parse_i64(self.val(self.pos)) {
-                                    if (0..=59).contains(&s) {
-                                        second = s;
-                                        self.pos += 1;
-                                    }
-                                }
-                            }
-                            self.skip_ws();
-                            if self.is(self.pos, TokType::Str) {
-                                let ap = self.val(self.pos);
-                                if ap.eq_ignore_ascii_case("am") || ap.eq_ignore_ascii_case("pm") {
-                                    hour = apply_ampm(hour, ap);
-                                    self.pos += 1;
-                                }
-                            }
-                        }
+            hour = h;
+            self.pos += 2;
+            if let Ok(m) = parse_i64(self.val(self.pos))
+                && (0..=59).contains(&m)
+            {
+                minute = m;
+                self.pos += 1;
+                if self.pos + 1 < self.toks.len()
+                    && self.is(self.pos, TokType::Operator)
+                    && self.val(self.pos) == ":"
+                    && self.is(self.pos + 1, TokType::Number)
+                {
+                    self.pos += 1;
+                    if let Ok(s) = parse_i64(self.val(self.pos))
+                        && (0..=59).contains(&s)
+                    {
+                        second = s;
+                        self.pos += 1;
+                    }
+                }
+                self.skip_ws();
+                if self.is(self.pos, TokType::Str) {
+                    let ap = self.val(self.pos);
+                    if ap.eq_ignore_ascii_case("am") || ap.eq_ignore_ascii_case("pm") {
+                        hour = apply_ampm(hour, ap);
+                        self.pos += 1;
                     }
                 }
             }
@@ -980,7 +981,14 @@ impl<'a> Parser<'a> {
                 return Some(self.mk(w.year, w.month as i64, w.day as i64, hour, minute, 0));
             }
         }
-        Some(self.mk(num, w.month as i64, w.day as i64, w.hour as i64, w.minute as i64, w.second as i64))
+        Some(self.mk(
+            num,
+            w.month as i64,
+            w.day as i64,
+            w.hour as i64,
+            w.minute as i64,
+            w.second as i64,
+        ))
     }
 }
 

@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test & lint (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Format
+        if: runner.os == 'Linux' # formatting is platform-independent
+        run: cargo fmt --all --check
+
+      - name: Clippy (all features, warnings denied)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test (all features)
+        run: cargo test --all-features
+
+  no_std:
+    name: no_std builds (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # thumbv7em-none-eabi is a 32-bit bare-metal target: it catches both
+        # accidental `std` dependencies and 64-bit-only arithmetic.
+        target: [x86_64-unknown-linux-gnu, thumbv7em-none-eabi, wasm32-unknown-unknown]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build bare no_std (no default features)
+        run: cargo build --target ${{ matrix.target }} --no-default-features
+
+      - name: Build no_std with IANA timezones (default features)
+        run: cargo build --target ${{ matrix.target }}
+
+  msrv:
+    name: MSRV (Rust 1.89)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Keep this pin in sync with `rust-version` in Cargo.toml.
+      - name: Install Rust 1.89 (declared MSRV)
+        uses: dtolnay/rust-toolchain@1.89
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      - name: cargo check --all-features --all-targets
+        run: cargo check --all-features --all-targets
+
+  docs:
+    name: Docs build (warnings denied)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings -D rustdoc::broken-intra-doc-links
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo doc --no-deps --all-features
+        run: cargo doc --no-deps --all-features
+
+  feature_matrix:
+    # `--all-features` hides breakage in lean builds (e.g. unused bindings that
+    # only exist without `iana`), so lint and test every combination.
+    name: Feature matrix
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings -D rustdoc::broken-intra-doc-links
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: features
+
+      - name: clippy + test + rustdoc, per feature set
+        run: |
+          set -euo pipefail
+          # Keep in sync with Cargo.toml's [features].
+          for f in "" std iana iana,std; do
+            echo "::group::features=[$f]"
+            cargo clippy --no-default-features --features "$f" --all-targets -- -D warnings
+            cargo test --no-default-features --features "$f"
+            cargo doc --no-deps --no-default-features --features "$f"
+            echo "::endgroup::"
+          done

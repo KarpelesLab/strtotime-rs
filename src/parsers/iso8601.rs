@@ -23,7 +23,8 @@ fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
     let mut t_idx = None;
     let mut i = 1;
     while i + 1 < b.len() {
-        if (b[i] == b't' || b[i] == b'T') && b[i - 1].is_ascii_digit() && b[i + 1].is_ascii_digit() {
+        if (b[i] == b't' || b[i] == b'T') && b[i - 1].is_ascii_digit() && b[i + 1].is_ascii_digit()
+        {
             t_idx = Some(i);
             break;
         }
@@ -62,10 +63,9 @@ fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
                 return None;
             }
             tz = if off == 0 { Tz::Utc } else { Tz::Fixed(off) };
-        } else if let Some(t) = tz::parse_timezone(tz_rest) {
-            tz = t;
         } else {
-            return None;
+            let t = tz::parse_timezone(tz_rest)?;
+            tz = t;
         }
     }
 

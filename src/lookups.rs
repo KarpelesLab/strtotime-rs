@@ -202,11 +202,7 @@ pub fn ordinal_word_to_number(word: &str) -> i64 {
 /// Expand a 2-digit year: 00–69 → 2000–2069, 70–99 → 1970–1999.
 pub fn two_digit_year(year: i64) -> i64 {
     if year < 100 {
-        if year < 70 {
-            year + 2000
-        } else {
-            year + 1900
-        }
+        if year < 70 { year + 2000 } else { year + 1900 }
     } else {
         year
     }
@@ -215,11 +211,7 @@ pub fn two_digit_year(year: i64) -> i64 {
 /// Convert an hour to 24-hour form given an "am"/"pm" indicator (case-insensitive).
 pub fn apply_ampm(hour: i64, ampm: &str) -> i64 {
     if ampm.eq_ignore_ascii_case("am") {
-        if hour == 12 {
-            0
-        } else {
-            hour
-        }
+        if hour == 12 { 0 } else { hour }
     } else if hour == 12 {
         12
     } else {
