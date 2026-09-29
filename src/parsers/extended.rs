@@ -2,7 +2,8 @@
 
 use crate::civil::{days_from_civil, days_in_month, weekday_from_days};
 use crate::lookups::{
-    Unit, apply_ampm, day_of_week, month_by_name, normalize_unit, two_digit_year,
+    Unit, apply_ampm, day_of_week, month_by_name, normalize_unit, strip_prefix_ci, strip_suffix_ci,
+    two_digit_year,
 };
 use crate::parsers::formats::{
     atoi, collect_fields, is_all_digits, is_valid_time, mk, mk_frac, parse_iso, tail_from,
@@ -11,7 +12,7 @@ use crate::parsers::token_parser::is_valid_date;
 use crate::relmath::apply_offset;
 use crate::tz::{self, Moment, Tz};
 
-const NF: usize = 24; // max fields we track
+pub(crate) const NF: usize = 24; // max fields we track
 
 fn is_alpha(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphabetic())
@@ -24,11 +25,10 @@ fn fixed(off: i32) -> Tz {
 /// "26th" → "26", "1st" → "1"; otherwise unchanged. Mirrors `stripOrdinalSuffix`.
 fn strip_ordinal_suffix(s: &str) -> &str {
     for suf in ["st", "nd", "rd", "th"] {
-        if s.len() > suf.len() && s[s.len() - suf.len()..].eq_ignore_ascii_case(suf) {
-            let prefix = &s[..s.len() - suf.len()];
-            if is_all_digits(prefix) {
-                return prefix;
-            }
+        if let Some(prefix) = strip_suffix_ci(s, suf)
+            && is_all_digits(prefix)
+        {
+            return prefix;
         }
     }
     s
@@ -50,7 +50,7 @@ fn ampm_of(s: &str) -> Option<&'static str> {
 // ---------------------------------------------------------------------------
 
 /// `YYYYMMDD`, `YYYYMMDDhhmmss` (+ optional tz). Mirrors `parseCompactTimestamp`.
-pub(crate) fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_compact_timestamp(s: &str, base: &Moment) -> Option<Moment> {
     let (digits, tz_str) = match s.find(' ') {
         Some(i) => (&s[..i], s[i + 1..].trim()),
         None => (s, ""),
@@ -92,7 +92,7 @@ pub(crate) fn parse_compact_timestamp(s: &str, base: Moment) -> Option<Moment> {
 
 /// `tHHMM`, dotted `HH.MM.SS[.f][TZ]`, `HHMMSS`, `YYYYDDD`. Mirrors
 /// `parseCompactTimeFormats`.
-pub(crate) fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_compact_time_formats(s: &str, base: &Moment) -> Option<Moment> {
     let b = s.as_bytes();
     let now = base.wall();
 
@@ -204,7 +204,7 @@ pub(crate) fn parse_compact_time_formats(s: &str, base: Moment) -> Option<Moment
 // ---------------------------------------------------------------------------
 
 /// `Jan-15-2006`, `2006-Jan-15`, `15-Jan-2006`. Mirrors `parseMonthNameFormat`.
-pub(crate) fn parse_month_name_format(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_month_name_format(s: &str, base: &Moment) -> Option<Moment> {
     let mut it = s.split('-');
     let p0 = it.next()?;
     let p1 = it.next()?;
@@ -260,7 +260,7 @@ fn parse_int(s: &str) -> Option<i64> {
 // ---------------------------------------------------------------------------
 
 /// `DD/Mon/YYYY:HH:MM:SS +0000`. Mirrors `parseHTTPLogFormat`.
-pub(crate) fn parse_http_log_format(s: &str, _base: Moment) -> Option<Moment> {
+pub(crate) fn parse_http_log_format(s: &str, _base: &Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let tz_off = s[sp + 1..].trim();
@@ -320,7 +320,7 @@ pub(crate) fn parse_http_log_format(s: &str, _base: Moment) -> Option<Moment> {
 
 /// `DD Mon YYYY [time] [tz]`, `DD-Mon-YYYY`, with weekday prefix/ordinal.
 /// Mirrors `parseDayMonthYear`.
-pub(crate) fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_day_month_year(s: &str, base: &Moment) -> Option<Moment> {
     let (after_prefix, prefix_day) = match crate::strip_weekday_prefix(s) {
         Some((rest, dn)) => (rest, dn),
         None => (s, -1),
@@ -432,7 +432,7 @@ pub(crate) fn parse_day_month_year(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `DDMonYYYY`, `DDMon YYYY`, or `DDMon`. Mirrors `parseDayMonthYearCompact`.
-fn parse_day_month_year_compact(s: &str, base: Moment) -> Option<Moment> {
+fn parse_day_month_year_compact(s: &str, base: &Moment) -> Option<Moment> {
     let s = s.trim();
     let b = s.as_bytes();
     if b.len() < 4 {
@@ -503,9 +503,8 @@ fn parse_day_month_year_compact(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `Oct 2001` or `2001 Oct`. Mirrors `parseMonthYearOnly`.
-pub(crate) fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
-    let mut fields = [""; NF];
-    let n = collect_fields(s, &mut fields);
+pub(crate) fn parse_month_year_only(fields: &[&str], base: &Moment) -> Option<Moment> {
+    let n = fields.len();
     if n != 2 {
         return None;
     }
@@ -530,9 +529,12 @@ pub(crate) fn parse_month_year_only(s: &str, base: Moment) -> Option<Moment> {
 
 /// `19:30 Dec 17 2005`, `17:00 2004-01-01`, `1pm Aug 1 GMT 2007`. Mirrors
 /// `parseTimeBeforeDate`.
-pub(crate) fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
-    let mut fields = [""; NF];
-    let n = collect_fields(s, &mut fields);
+pub(crate) fn parse_time_before_date<'a>(
+    s: &'a str,
+    fields: &[&'a str],
+    base: &Moment,
+) -> Option<Moment> {
+    let n = fields.len();
     if n < 2 {
         return None;
     }
@@ -567,12 +569,11 @@ pub(crate) fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
         }
     } else {
         let f = fields[0];
-        let (ampm, num) = if f.len() >= 2 && f[f.len() - 2..].eq_ignore_ascii_case("pm") {
-            ("pm", &f[..f.len() - 2])
-        } else if f.len() >= 2 && f[f.len() - 2..].eq_ignore_ascii_case("am") {
-            ("am", &f[..f.len() - 2])
+        let (ampm, num) = if let Some(num) = strip_suffix_ci(f, "pm") {
+            ("pm", num)
         } else {
-            return None;
+            let num = strip_suffix_ci(f, "am")?;
+            ("am", num)
         };
         let h = parse_int(num)?;
         if !(1..=12).contains(&h) {
@@ -582,7 +583,7 @@ pub(crate) fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
     }
 
     // Date is the remaining fields.
-    let date_str = tail_from(s, fields[time_field_end]).trim();
+    let date_str = tail_from(s, fields.get(time_field_end)?).trim();
 
     if let Some(t) = parse_iso(date_str, base) {
         let w = t.wall();
@@ -636,9 +637,8 @@ pub(crate) fn parse_time_before_date(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `MM/DD/YYYY H:MM AM`. Mirrors `parseUSDateWithTime`.
-pub(crate) fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
-    let mut fields = [""; NF];
-    let n = collect_fields(s, &mut fields);
+pub(crate) fn parse_us_date_with_time(fields: &[&str], base: &Moment) -> Option<Moment> {
+    let n = fields.len();
     if n < 2 {
         return None;
     }
@@ -674,14 +674,13 @@ pub(crate) fn parse_us_date_with_time(s: &str, base: Moment) -> Option<Moment> {
 
 /// `first day of YYYY-MM`, `last day of next month`, etc. Mirrors
 /// `parseFirstLastDayOfDate`.
-pub(crate) fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_first_last_day_of_date(s: &str, base: &Moment) -> Option<Moment> {
     let t = s.trim();
-    let (is_first, rest) = if t.len() >= 13 && t[..13].eq_ignore_ascii_case("first day of ") {
-        (true, t[13..].trim())
-    } else if t.len() >= 12 && t[..12].eq_ignore_ascii_case("last day of ") {
-        (false, t[12..].trim())
+    let (is_first, rest) = if let Some(r) = strip_prefix_ci(t, "first day of ") {
+        (true, r.trim())
     } else {
-        return None;
+        let r = strip_prefix_ci(t, "last day of ")?;
+        (false, r.trim())
     };
 
     let now = base.wall();
@@ -695,8 +694,8 @@ pub(crate) fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Mome
         {
             let unit = normalize_unit(f[1]);
             let refm = match unit {
-                Some(Unit::Month) => apply_offset(base, amount, Unit::Month),
-                Some(Unit::Year) => apply_offset(base, amount, Unit::Year),
+                Some(Unit::Month) => apply_offset(*base, amount, Unit::Month),
+                Some(Unit::Year) => apply_offset(*base, amount, Unit::Year),
                 _ => return None,
             };
             let rw = refm.wall();
@@ -771,9 +770,8 @@ pub(crate) fn parse_first_last_day_of_date(s: &str, base: Moment) -> Option<Mome
 // ---------------------------------------------------------------------------
 
 /// `26th Nov [YYYY] [time]`. Mirrors `parseOrdinalDate`.
-pub(crate) fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
-    let mut f = [""; NF];
-    let n = collect_fields(s, &mut f);
+pub(crate) fn parse_ordinal_date(f: &[&str], base: &Moment) -> Option<Moment> {
+    let n = f.len();
     if n < 2 {
         return None;
     }
@@ -807,9 +805,8 @@ pub(crate) fn parse_ordinal_date(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `Dec 17 19:30 2005`. Mirrors `parseMonthDayTimeYear`.
-pub(crate) fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment> {
-    let mut f = [""; NF];
-    let n = collect_fields(s, &mut f);
+pub(crate) fn parse_month_day_time_year(f: &[&str], base: &Moment) -> Option<Moment> {
+    let n = f.len();
     if n != 4 {
         return None;
     }
@@ -833,7 +830,7 @@ pub(crate) fn parse_month_day_time_year(s: &str, base: Moment) -> Option<Moment>
 // ---------------------------------------------------------------------------
 
 /// `YYYY-MM-DD TZ +N unit ...`. Mirrors `parseDateTimeTZRelative`.
-pub(crate) fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_datetime_tz_relative(s: &str, base: &Moment) -> Option<Moment> {
     let mut rels: [(i64, Unit); NF] = [(0, Unit::Day); NF];
     let mut rn = 0;
     let mut remaining = s;
@@ -883,7 +880,11 @@ pub(crate) fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment
     let mut t = crate::parsers::iso8601::parse_iso8601(date_part, base)
         .or_else(|| crate::parsers::formats::parse_datetime(date_part, base))
         .or_else(|| crate::parsers::tzfmt::parse_iso_datetime_with_tz(date_part, base))
-        .or_else(|| parse_date_with_tz(date_part, base))
+        .or_else(|| {
+            let mut f = [""; NF];
+            let n = collect_fields(date_part, &mut f);
+            parse_date_with_tz(&f[..n], base)
+        })
         .or_else(|| parse_iso(date_part, base))
         .or_else(|| parse_day_month_year(date_part, base))?;
 
@@ -895,9 +896,8 @@ pub(crate) fn parse_datetime_tz_relative(s: &str, base: Moment) -> Option<Moment
 }
 
 /// `YYYY-MM-DD TZname`. Mirrors `parseDateWithTZ`.
-pub(crate) fn parse_date_with_tz(s: &str, base: Moment) -> Option<Moment> {
-    let mut f = [""; NF];
-    let n = collect_fields(s, &mut f);
+pub(crate) fn parse_date_with_tz(f: &[&str], base: &Moment) -> Option<Moment> {
+    let n = f.len();
     if n != 2 {
         return None;
     }
@@ -912,23 +912,22 @@ pub(crate) fn parse_date_with_tz(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `front of 7` (6:45), `back of 7` (7:15), with am/pm. Mirrors `parseFrontBackOf`.
-pub(crate) fn parse_front_back_of(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_front_back_of(s: &str, base: &Moment) -> Option<Moment> {
     let t = s.trim();
-    let (is_front, mut rest) = if t.len() >= 9 && t[..9].eq_ignore_ascii_case("front of ") {
-        (true, t[9..].trim())
-    } else if t.len() >= 8 && t[..8].eq_ignore_ascii_case("back of ") {
-        (false, t[8..].trim())
+    let (is_front, mut rest) = if let Some(r) = strip_prefix_ci(t, "front of ") {
+        (true, r.trim())
     } else {
-        return None;
+        let r = strip_prefix_ci(t, "back of ")?;
+        (false, r.trim())
     };
 
     let mut ampm = "";
-    if rest.len() >= 2 && rest[rest.len() - 2..].eq_ignore_ascii_case("am") {
+    if let Some(r) = strip_suffix_ci(rest, "am") {
         ampm = "am";
-        rest = rest[..rest.len() - 2].trim();
-    } else if rest.len() >= 2 && rest[rest.len() - 2..].eq_ignore_ascii_case("pm") {
+        rest = r.trim();
+    } else if let Some(r) = strip_suffix_ci(rest, "pm") {
         ampm = "pm";
-        rest = rest[..rest.len() - 2].trim();
+        rest = r.trim();
     }
 
     let mut hour = parse_int(rest)?;
@@ -992,9 +991,8 @@ fn roman_month(s: &str) -> Option<i64> {
 }
 
 /// `20 VI. 2005`. Mirrors `parseRomanNumeralDate`.
-pub(crate) fn parse_roman_numeral_date(s: &str, base: Moment) -> Option<Moment> {
-    let mut f = [""; NF];
-    let n = collect_fields(s, &mut f);
+pub(crate) fn parse_roman_numeral_date(f: &[&str], base: &Moment) -> Option<Moment> {
+    let n = f.len();
     if n < 3 {
         return None;
     }
@@ -1068,9 +1066,8 @@ fn parse_ordinal_prefix(fields: &[&str], idx: usize) -> Option<(i64, bool, usize
 
 /// `1 Monday December 2008`, `second Monday December 2008`, `+1 week Thursday Nov 2007`.
 /// Mirrors `parseNumberedWeekday`.
-pub(crate) fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
-    let mut f = [""; NF];
-    let n = collect_fields(s, &mut f);
+pub(crate) fn parse_numbered_weekday(f: &[&str], base: &Moment) -> Option<Moment> {
+    let n = f.len();
     if n < 3 {
         return None;
     }
@@ -1130,7 +1127,7 @@ pub(crate) fn parse_numbered_weekday(s: &str, base: Moment) -> Option<Moment> {
         idx += 1;
         match unit {
             Some(Unit::Month) => {
-                let refm = apply_offset(base, if next { 1 } else { -1 }, Unit::Month).wall();
+                let refm = apply_offset(*base, if next { 1 } else { -1 }, Unit::Month).wall();
                 month = refm.month as i64;
                 year = refm.year;
             }

@@ -6,7 +6,7 @@ use crate::parsers::formats::{mk, parse_iso, tail_from};
 use crate::tz::{self, Moment};
 
 /// Entry point. Mirrors `parseWithTimezone`.
-pub(crate) fn parse_with_timezone(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_with_timezone(s: &str, base: &Moment) -> Option<Moment> {
     parse_full_datetime_with_tz(s, base)
         .or_else(|| parse_iso_datetime_with_tz(s, base))
         .or_else(|| parse_time_only_with_tz(s, base))
@@ -33,7 +33,7 @@ fn parse_hms3(s: &str) -> Option<(i64, i64, i64)> {
 }
 
 /// `YYYY-M-D HH:MM:SS timezone`. Mirrors `parseISODateTimeWithTimezone`.
-pub(crate) fn parse_iso_datetime_with_tz(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso_datetime_with_tz(s: &str, base: &Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     if date_part.bytes().filter(|b| *b == b'-').count() != 2 {
@@ -63,7 +63,7 @@ pub(crate) fn parse_iso_datetime_with_tz(s: &str, base: Moment) -> Option<Moment
 }
 
 /// `HH:MM[:SS] timezone` (date taken from base). Mirrors `parseTimeOnlyWithTimezone`.
-fn parse_time_only_with_tz(s: &str, base: Moment) -> Option<Moment> {
+fn parse_time_only_with_tz(s: &str, base: &Moment) -> Option<Moment> {
     let sp = s.rfind(' ')?;
     let time_part = s[..sp].trim();
     let tz_string = s[sp + 1..].trim();
@@ -102,7 +102,7 @@ fn parse_time_only_with_tz(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `MonthName Day Year [HH:MM[:SS]] Timezone`. Mirrors `parseFullDateTimeWithTimezone`.
-fn parse_full_datetime_with_tz(s: &str, _base: Moment) -> Option<Moment> {
+fn parse_full_datetime_with_tz(s: &str, _base: &Moment) -> Option<Moment> {
     let mut fields = s.split_whitespace();
     let month = month_by_name(fields.next()?)? as i64;
 

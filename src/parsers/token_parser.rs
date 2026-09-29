@@ -28,12 +28,12 @@ pub(crate) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub(crate) fn new(input: &'a str, toks: &'a [Token<'a>], base: Moment) -> Parser<'a> {
+    pub(crate) fn new(input: &'a str, toks: &'a [Token<'a>], base: &Moment) -> Parser<'a> {
         Parser {
             input,
             toks,
             pos: 0,
-            result: base,
+            result: *base,
             tz: base.tz,
             tz_found: false,
             month_found: false,
@@ -63,8 +63,9 @@ impl<'a> Parser<'a> {
     /// Substring of the original input spanning tokens `a..=b` (contiguous), used
     /// to assemble timezone paths without allocation.
     fn span(&self, a: usize, b: usize) -> &'a str {
-        let start = self.toks[a].pos;
-        let end = self.toks[b].pos + self.toks[b].val.len();
+        let base = self.input.as_ptr() as usize;
+        let start = self.toks[a].val.as_ptr() as usize - base;
+        let end = self.toks[b].val.as_ptr() as usize - base + self.toks[b].val.len();
         &self.input[start..end]
     }
 

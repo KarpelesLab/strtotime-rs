@@ -66,15 +66,28 @@ pub(crate) fn add_weekdays(m: Moment, n: i64) -> Moment {
         };
     }
 
-    let (step, count) = if n < 0 { (-1, -n) } else { (1, n) };
-    let mut result = m;
-    for _ in 0..count {
-        result = add_date(result, 0, 0, step);
-        while matches!(result.wall().weekday(), 0 | 6) {
-            result = add_date(result, 0, 0, step);
-        }
-    }
-    result
+    add_date(m, 0, 0, weekday_delta(wd as i64, n))
+}
+
+/// Calendar days from a day with weekday `wd` (0 = Sunday) to the `n`-th
+/// business day after it (before it, for negative `n`), `n != 0`.
+///
+/// Closed form, so the cost is independent of `n` (stepping day by day let a
+/// short input like "99999999999 weekdays" run for hours). Resolving the wall
+/// time once, at the target date, also matches PHP across DST gaps.
+fn weekday_delta(wd: i64, n: i64) -> i64 {
+    // Weekend starts count from the adjacent business day in the direction of
+    // travel: the n-th business day after Sat/Sun is the n-th after Friday, the
+    // n-th before Sat/Sun is the n-th before Monday.
+    let (adjust, k) = match (wd, n > 0) {
+        (6, true) => (-1, 4),
+        (0, true) => (-2, 4),
+        (6, false) => (2, 0),
+        (0, false) => (1, 0),
+        _ => (0, wd - 1), // Mon = 0 .. Fri = 4
+    };
+    let target = k + n; // business-day index from the Monday of `k`'s week
+    adjust + target.div_euclid(5) * 7 + target.rem_euclid(5) - k
 }
 
 /// Apply `amount` units of `unit` to `m`. Mirrors `applyTimeOffset`.
@@ -104,4 +117,30 @@ fn add_clock(m: Moment, dh: i64, dmi: i64, ds: i64) -> Moment {
         w.second as i64 + ds,
     );
     Moment::from_civil_frac(m.tz, c, m.micros)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::relmath::weekday_delta;
+
+    /// The closed form agrees with stepping one day at a time.
+    #[test]
+    fn weekday_delta_matches_stepping() {
+        for wd in 0..7 {
+            for n in -40i64..=40 {
+                if n == 0 {
+                    continue;
+                }
+                let step = n.signum();
+                let (mut day, mut left) = (0i64, n.abs());
+                while left > 0 {
+                    day += step;
+                    if !matches!((wd + day).rem_euclid(7), 0 | 6) {
+                        left -= 1;
+                    }
+                }
+                assert_eq!(weekday_delta(wd, n), day, "wd={wd} n={n}");
+            }
+        }
+    }
 }

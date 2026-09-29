@@ -7,7 +7,7 @@
 
 use crate::civil;
 use crate::datetime::Civil;
-use crate::lookups::{apply_ampm, two_digit_year};
+use crate::lookups::{apply_ampm, strip_suffix_ci, two_digit_year};
 use crate::parsers::token_parser::is_valid_date;
 use crate::tz::{self, Moment, Tz};
 
@@ -59,6 +59,9 @@ pub(crate) fn tail_from<'a>(whole: &'a str, part: &str) -> &'a str {
 /// Collect whitespace-separated fields into `out`, returning the count (capped
 /// at `out.len()`). Equivalent to Go's `strings.Fields` for our purposes.
 pub(crate) fn collect_fields<'a>(s: &'a str, out: &mut [&'a str]) -> usize {
+    if s.is_ascii() {
+        return collect_ascii_fields(s, out);
+    }
     let mut n = 0;
     for f in s.split_whitespace() {
         if n >= out.len() {
@@ -70,11 +73,38 @@ pub(crate) fn collect_fields<'a>(s: &'a str, out: &mut [&'a str]) -> usize {
     n
 }
 
+/// Byte-level [`collect_fields`] for ASCII input (the common case). Splits on
+/// the same set `char::is_whitespace` accepts in ASCII, which (unlike
+/// `u8::is_ascii_whitespace`) includes vertical tab.
+fn collect_ascii_fields<'a>(s: &'a str, out: &mut [&'a str]) -> usize {
+    // Bit `c` set for c in {\t, \n, 0x0B, 0x0C, \r, ' '}: one shift+test per byte.
+    const WS: u64 = (1 << b' ') | (0x1F << b'\t');
+    let is_ws = |c: u8| c <= b' ' && WS & (1 << c) != 0;
+    let b = s.as_bytes();
+    let (mut n, mut i) = (0, 0);
+    while n < out.len() {
+        while i < b.len() && is_ws(b[i]) {
+            i += 1;
+        }
+        if i == b.len() {
+            break;
+        }
+        let start = i;
+        while i < b.len() && !is_ws(b[i]) {
+            i += 1;
+        }
+        out[n] = &s[start..i];
+        n += 1;
+    }
+    n
+}
+
 /// Split `s` on `sep` into exactly three parts (requires exactly two separators).
 fn split3(s: &str, sep: u8) -> Option<(&str, &str, &str)> {
-    let mut it = s.match_indices(sep as char);
-    let (a, _) = it.next()?;
-    let (b, _) = it.next()?;
+    let bytes = s.as_bytes();
+    let mut it = (0..bytes.len()).filter(|&i| bytes[i] == sep);
+    let a = it.next()?;
+    let b = it.next()?;
     if it.next().is_some() {
         return None;
     }
@@ -88,7 +118,7 @@ fn split3(s: &str, sep: u8) -> Option<(&str, &str, &str)> {
 /// Run the ordered format parsers; returns the first match. Mirrors the
 /// `formatParsers` list in `strtotime.go`. Parsers from later phases are added
 /// in their correct positions as they land.
-pub(crate) fn pipeline(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn pipeline(s: &str, base: &Moment) -> Option<Moment> {
     use crate::parsers::{extended as ext, iso8601, tzfmt};
 
     let first = s.as_bytes().first().copied().unwrap_or(0);
@@ -104,12 +134,23 @@ pub(crate) fn pipeline(s: &str, base: Moment) -> Option<Moment> {
         };
     }
 
+    // Whitespace fields of `s`, split on first use and shared by the parsers
+    // below (most inputs are matched before any of them needs it).
+    let mut fbuf = [""; ext::NF];
+    let mut nf: Option<usize> = None;
+    macro_rules! fields {
+        () => {{
+            let n = *nf.get_or_insert_with(|| collect_fields(s, &mut fbuf));
+            &fbuf[..n]
+        }};
+    }
+
     attempt!(digit, parse_european(s, base));
     attempt!(
         s.starts_with("front of ") || s.starts_with("back of "),
         ext::parse_front_back_of(s, base)
     );
-    attempt!(digit, ext::parse_roman_numeral_date(s, base));
+    attempt!(digit, ext::parse_roman_numeral_date(fields!(), base));
     attempt!(s.starts_with("0000-00-00"), parse_zero_date(s, base));
     attempt!(first == b'-' || first == b'+', parse_signed_year(s, base));
     attempt!(true, iso8601::parse_iso8601(s, base));
@@ -120,20 +161,20 @@ pub(crate) fn pipeline(s: &str, base: Moment) -> Option<Moment> {
     attempt!(digit, parse_year_month(s, base));
     attempt!(digit, parse_slash(s, base));
     attempt!(digit, parse_us(s, base));
-    attempt!(digit, ext::parse_us_date_with_time(s, base));
+    attempt!(digit, ext::parse_us_date_with_time(fields!(), base));
     attempt!(digit, parse_short_year_us_military(s, base));
     attempt!(digit, ext::parse_compact_timestamp(s, base));
     attempt!(true, ext::parse_compact_time_formats(s, base));
     attempt!(true, ext::parse_month_name_format(s, base));
     attempt!(digit, ext::parse_http_log_format(s, base));
     attempt!(true, ext::parse_datetime_tz_relative(s, base));
-    attempt!(true, ext::parse_date_with_tz(s, base));
+    attempt!(true, ext::parse_date_with_tz(fields!(), base));
     attempt!(true, ext::parse_day_month_year(s, base));
-    attempt!(true, ext::parse_month_year_only(s, base));
-    attempt!(digit, ext::parse_time_before_date(s, base));
-    attempt!(true, ext::parse_month_day_time_year(s, base));
+    attempt!(true, ext::parse_month_year_only(fields!(), base));
+    attempt!(digit, ext::parse_time_before_date(s, fields!(), base));
+    attempt!(true, ext::parse_month_day_time_year(fields!(), base));
     attempt!(true, ext::parse_first_last_day_of_date(s, base));
-    attempt!(true, ext::parse_numbered_weekday(s, base));
+    attempt!(true, ext::parse_numbered_weekday(fields!(), base));
 
     None
 }
@@ -143,7 +184,7 @@ pub(crate) fn pipeline(s: &str, base: Moment) -> Option<Moment> {
 // ---------------------------------------------------------------------------
 
 /// `YYYY-MM-DD` or `D-M-YYYY` (and 2-digit-year variants). Mirrors `parseISOFormat`.
-pub(crate) fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'-') != 2 {
         return None;
     }
@@ -180,7 +221,7 @@ pub(crate) fn parse_iso(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY/MM/DD`. Mirrors `parseSlashFormat`.
-pub(crate) fn parse_slash(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_slash(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'/') != 2 {
         return None;
     }
@@ -196,7 +237,7 @@ pub(crate) fn parse_slash(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `MM/DD/YYYY`. Mirrors `parseUSFormat`.
-pub(crate) fn parse_us(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_us(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'/') != 2 {
         return None;
     }
@@ -212,7 +253,7 @@ pub(crate) fn parse_us(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `DD.MM.YY` / `DD.MM.YYYY`. Mirrors `parseEuropeanFormat`.
-pub(crate) fn parse_european(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_european(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'.') != 2 {
         return None;
     }
@@ -232,7 +273,7 @@ pub(crate) fn parse_european(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY-MM`, `YYYY-M`, or ISO ordinal `YYYY-DDD`. Mirrors `parseYearMonthFormat`.
-pub(crate) fn parse_year_month(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_year_month(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'-') != 1 {
         return None;
     }
@@ -261,7 +302,7 @@ pub(crate) fn parse_year_month(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `0000-00-00 ...` → PHP's -0001-11-30. Mirrors `parseZeroDate`.
-pub(crate) fn parse_zero_date(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_zero_date(s: &str, base: &Moment) -> Option<Moment> {
     if !s.trim_start().starts_with("0000-00-00") {
         return None;
     }
@@ -271,7 +312,7 @@ pub(crate) fn parse_zero_date(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `-YYYY-MM-DD [HH:MM:SS [TZ]]` / `+YYYY-MM-DD[T]...`. Mirrors `parseSignedYear`.
-pub(crate) fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_signed_year(s: &str, base: &Moment) -> Option<Moment> {
     let b = s.as_bytes();
     if b.len() < 2 {
         return None;
@@ -326,7 +367,7 @@ pub(crate) fn parse_signed_year(s: &str, base: Moment) -> Option<Moment> {
 
 /// `MM/DD/YY HHMM` (short year + military time). Mirrors
 /// `parseShortYearUSDateWithMilitaryTime`.
-pub(crate) fn parse_short_year_us_military(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_short_year_us_military(s: &str, base: &Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let time_part = s[sp + 1..].trim();
@@ -356,7 +397,7 @@ pub(crate) fn parse_short_year_us_military(s: &str, base: Moment) -> Option<Mome
 
 /// 5–6 digit "year" that PHP reinterprets as compact time + month/day. Mirrors
 /// `parseLargeYearAsTime`.
-pub(crate) fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_large_year_as_time(s: &str, base: &Moment) -> Option<Moment> {
     if count(s, b'-') != 2 {
         return None;
     }
@@ -409,33 +450,19 @@ pub(crate) fn parse_large_year_as_time(s: &str, base: Moment) -> Option<Moment> 
 
 /// `YYYY-MM-DD HH:MM:SS [TZ]` (and month-name dates via the extended parser,
 /// wired later). Mirrors `parseDateTimeFormat`.
-pub(crate) fn parse_datetime(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_datetime(s: &str, base: &Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let mut rest = s[sp + 1..].trim();
 
     // Trailing AM/PM (attached, spaced, or dotted).
     let mut ampm = "";
-    if rest.len() >= 4
-        && (rest[rest.len() - 4..].eq_ignore_ascii_case("a.m.")
-            || rest[rest.len() - 4..].eq_ignore_ascii_case("p.m."))
-    {
-        ampm = if rest.as_bytes()[rest.len() - 4].eq_ignore_ascii_case(&b'a') {
-            "am"
-        } else {
-            "pm"
-        };
-        rest = rest[..rest.len() - 4].trim();
-    } else if rest.len() >= 2
-        && (rest[rest.len() - 2..].eq_ignore_ascii_case("am")
-            || rest[rest.len() - 2..].eq_ignore_ascii_case("pm"))
-    {
-        ampm = if rest[rest.len() - 2..].eq_ignore_ascii_case("am") {
-            "am"
-        } else {
-            "pm"
-        };
-        rest = rest[..rest.len() - 2].trim();
+    for (suffix, which) in [("a.m.", "am"), ("p.m.", "pm"), ("am", "am"), ("pm", "pm")] {
+        if let Some(r) = strip_suffix_ci(rest, suffix) {
+            ampm = which;
+            rest = r.trim();
+            break;
+        }
     }
 
     let (mut hour, minute, second, micros, consumed) = parse_iso8601_time(rest)?;
@@ -574,4 +601,27 @@ pub(crate) fn parse_time_tz_suffix(s: &str, default_tz: Tz) -> (i64, i64, i64, u
     }
 
     (h as i64, m as i64, sec as i64, micros, tz)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parsers::formats::collect_fields;
+
+    #[test]
+    fn ascii_fields_match_split_whitespace() {
+        for s in [
+            "",
+            "   ",
+            "a",
+            " next  monday\t10:00 ",
+            "x\x0By\x0Cz\r\nw",
+            "2023-01-15\u{a0}10:00 UTC",
+            "a b c d e f g h i j k",
+        ] {
+            let mut out = [""; 8];
+            let n = collect_fields(s, &mut out);
+            let want = s.split_whitespace().take(8);
+            assert!(out[..n].iter().copied().eq(want), "{s:?}");
+        }
+    }
 }

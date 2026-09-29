@@ -20,33 +20,19 @@ pub(crate) enum TokType {
     Punctuation,
 }
 
-/// A single token: its text, class, and byte offset in the input.
+/// A single token: its text and class. `val` is a subslice of the input, so
+/// its byte offset is recoverable from the pointer (see `Parser::span`).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Token<'a> {
     pub val: &'a str,
     pub typ: TokType,
-    pub pos: usize,
 }
 
 impl Token<'_> {
-    const EMPTY: Token<'static> = Token {
+    pub(crate) const EMPTY: Token<'static> = Token {
         val: "",
         typ: TokType::Whitespace,
-        pos: 0,
     };
-}
-
-/// A tokenized input held in a fixed-size buffer.
-pub(crate) struct Tokens<'a> {
-    buf: [Token<'a>; MAX_TOKENS],
-    len: usize,
-}
-
-impl<'a> Tokens<'a> {
-    /// Tokens as a slice.
-    pub(crate) fn as_slice(&self) -> &[Token<'a>] {
-        &self.buf[..self.len]
-    }
 }
 
 /// Classify an ASCII byte. Non-ASCII bytes (>= 0x80) classify as `Str`, matching
@@ -61,15 +47,18 @@ fn classify(c: u8) -> TokType {
     }
 }
 
-/// Tokenize `s`. Operates on bytes; since all token-significant characters are
-/// ASCII, runs of non-ASCII bytes are grouped as `Str` tokens.
-pub(crate) fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
-    let mut buf = [Token::EMPTY; MAX_TOKENS];
+/// Tokenize `s` into the caller's `buf`, returning the filled prefix. Operates
+/// on bytes; since all token-significant characters are ASCII, runs of
+/// non-ASCII bytes are grouped as `Str` tokens.
+pub(crate) fn tokenize<'a, 'b>(
+    s: &'a str,
+    buf: &'b mut [Token<'a>; MAX_TOKENS],
+) -> Result<&'b [Token<'a>], Error> {
     let mut len = 0usize;
 
     let bytes = s.as_bytes();
     if bytes.is_empty() {
-        return Ok(Tokens { buf, len });
+        return Ok(&buf[..0]);
     }
 
     let mut cur = classify(bytes[0]);
@@ -85,7 +74,6 @@ pub(crate) fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
             buf[len] = Token {
                 val: &s[start..i],
                 typ: cur,
-                pos: start,
             };
             len += 1;
             cur = nt;
@@ -99,9 +87,8 @@ pub(crate) fn tokenize(s: &str) -> Result<Tokens<'_>, Error> {
     buf[len] = Token {
         val: &s[start..],
         typ: cur,
-        pos: start,
     };
     len += 1;
 
-    Ok(Tokens { buf, len })
+    Ok(&buf[..len])
 }

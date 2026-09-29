@@ -3,6 +3,28 @@
 //! Port of the Go reference's `lookups.go`. All matching is ASCII
 //! case-insensitive (the Go code lowercases first; we compare in place).
 
+/// ASCII case-insensitive `strip_prefix`. `p` must be ASCII; a match then ends
+/// on a char boundary, so this never panics on multi-byte input (unlike slicing
+/// `s[..p.len()]` before comparing).
+pub(crate) fn strip_prefix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
+    let n = p.len();
+    if s.len() >= n && s.as_bytes()[..n].eq_ignore_ascii_case(p.as_bytes()) {
+        Some(&s[n..])
+    } else {
+        None
+    }
+}
+
+/// ASCII case-insensitive `strip_suffix`; see [`strip_prefix_ci`].
+pub(crate) fn strip_suffix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
+    let cut = s.len().checked_sub(p.len())?;
+    if s.as_bytes()[cut..].eq_ignore_ascii_case(p.as_bytes()) {
+        Some(&s[..cut])
+    } else {
+        None
+    }
+}
+
 /// Canonical time units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Unit {
@@ -144,7 +166,7 @@ pub(crate) fn normalize_unit(unit: &str) -> Option<Unit> {
     }
 
     // Known prefixes (order matters: weekday before week, hr handled with hour).
-    let lower_starts = |p: &str| unit.len() >= p.len() && unit[..p.len()].eq_ignore_ascii_case(p);
+    let lower_starts = |p: &str| strip_prefix_ci(unit, p).is_some();
     if lower_starts("weekday") {
         Some(Unit::Weekday)
     } else if lower_starts("day") {

@@ -84,6 +84,60 @@ fn invalid_inputs_error() {
     assert!(strtotime("2023-", 0, Tz::Utc).is_err());
 }
 
+/// Weekday arithmetic is O(1): a huge count must not loop day by day (this
+/// used to take hours). Expected values are from PHP 8.
+#[cfg(feature = "iana")]
+#[test]
+fn weekdays_large_counts_and_dst() {
+    let ny = Tz::Iana(timezone_data::load("America/New_York").unwrap());
+    let base = 1_749_945_600; // 2025-06-15 00:00 UTC (a Sunday)
+    assert_eq!(
+        strtotime("99999999999weekday", base, ny),
+        Ok(12_096_001_749_772_800)
+    );
+    assert_eq!(strtotime("1000000 weekdays", base, ny), Ok(122_709_859_200));
+    assert_eq!(
+        strtotime("-1000000 weekdays", base, ny),
+        Ok(-119_209_878_238)
+    );
+
+    // Stepping across the spring-forward gap keeps the wall time (PHP), rather
+    // than drifting to 03:30 after passing through 2025-03-09 02:30.
+    let fri = strtotime("2025-03-07 02:30:00", 0, ny).unwrap();
+    assert_eq!(strtotime("+3 weekdays", fri, ny), Ok(1_741_761_000));
+    assert_eq!(strtotime("+1 weekday", fri, ny), Ok(1_741_588_200));
+    let mon = strtotime("2025-03-10 02:30:00", 0, ny).unwrap();
+    assert_eq!(strtotime("-1 weekday", mon, ny), Ok(1_741_332_600));
+    assert_eq!(strtotime("-3 weekdays", mon, ny), Ok(1_741_159_800));
+}
+
+/// Multi-byte UTF-8 input must never panic (byte-offset slicing used to split
+/// characters). One case per formerly-panicking site, found by fuzzing.
+#[test]
+fn non_ascii_input_does_not_panic() {
+    for input in [
+        "日 hours",
+        "Tue 日",
+        "Wednesday日",
+        "first day of日",
+        "front of 日",
+        "front of 7日",
+        "1st日 Nov",
+        "2023-01-15 10:00日",
+        "2023-01-15 10:00 é.m.",
+        "10日 Nov 2005",
+        "10:00 pm",
+        "dayé",
+        "2007-06-28 é",
+        "05 é 60 ",
+        "third \u{a0}america/new_york . ",
+    ] {
+        for tz in [Tz::Utc, Tz::Fixed(3600)] {
+            let _ = strtotime(input, 1_199_145_600, tz);
+        }
+    }
+}
+
 #[cfg(feature = "std")]
 #[test]
 fn std_helpers() {

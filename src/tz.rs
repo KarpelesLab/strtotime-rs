@@ -282,12 +282,105 @@ pub(crate) fn parse_timezone(s: &str) -> Option<Tz> {
                 return Some(Tz::Iana(z));
             }
         }
-        if let Ok(z) = timezone_data::load_insensitive(s) {
+        if let Some(z) = load_iana_insensitive(s) {
             return Some(Tz::Iana(z));
         }
     }
 
     None
+}
+
+/// IANA zone names without an area prefix (no `/`). Pinned to the embedded
+/// database by the `iana_name_tables_match_db` test.
+#[cfg(feature = "iana")]
+const IANA_FLAT_NAMES: &[&str] = &[
+    "CET",
+    "CST6CDT",
+    "Cuba",
+    "EET",
+    "EST",
+    "EST5EDT",
+    "Egypt",
+    "Eire",
+    "Factory",
+    "GB",
+    "GB-Eire",
+    "GMT",
+    "GMT+0",
+    "GMT-0",
+    "GMT0",
+    "Greenwich",
+    "HST",
+    "Hongkong",
+    "Iceland",
+    "Iran",
+    "Israel",
+    "Jamaica",
+    "Japan",
+    "Kwajalein",
+    "Libya",
+    "MET",
+    "MST",
+    "MST7MDT",
+    "NZ",
+    "NZ-CHAT",
+    "Navajo",
+    "PRC",
+    "PST8PDT",
+    "Poland",
+    "Portugal",
+    "ROC",
+    "ROK",
+    "Singapore",
+    "Turkey",
+    "UCT",
+    "UTC",
+    "Universal",
+    "W-SU",
+    "WET",
+    "Zulu",
+];
+
+/// The area prefixes (before the first `/`) of every other IANA zone name.
+#[cfg(feature = "iana")]
+const IANA_AREAS: &[&str] = &[
+    "Africa",
+    "America",
+    "Antarctica",
+    "Arctic",
+    "Asia",
+    "Atlantic",
+    "Australia",
+    "Brazil",
+    "Canada",
+    "Chile",
+    "Etc",
+    "Europe",
+    "Indian",
+    "Mexico",
+    "Pacific",
+    "US",
+];
+
+/// Case-insensitive IANA lookup. Tries the exact (binary-searched) name first,
+/// and only falls back to `timezone_data`'s linear case-insensitive scan when
+/// `s` could possibly name a zone — the parser probes most words of the input
+/// as potential zones, and nearly all of them are not.
+#[cfg(feature = "iana")]
+fn load_iana_insensitive(s: &str) -> Option<timezone_data::Zone> {
+    if let Ok(z) = timezone_data::load(s) {
+        return Some(z);
+    }
+    match s.split_once('/') {
+        None => IANA_FLAT_NAMES
+            .iter()
+            .find(|n| n.eq_ignore_ascii_case(s))
+            .and_then(|n| timezone_data::load(n).ok()),
+        Some((area, _)) if IANA_AREAS.iter().any(|a| a.eq_ignore_ascii_case(area)) => {
+            timezone_data::load_insensitive(s).ok()
+        }
+        Some(_) => None,
+    }
 }
 
 /// Parse a numeric timezone offset (`Z`, `+HH:MM`, `-HHMM`, `+HH`, flexible
@@ -431,4 +524,43 @@ fn atoi(b: &[u8]) -> i32 {
         n = n * 10 + (c - b'0') as i32;
     }
     n
+}
+
+#[cfg(all(test, feature = "iana"))]
+mod tests {
+    use crate::tz::{IANA_AREAS, IANA_FLAT_NAMES, load_iana_insensitive};
+
+    #[test]
+    fn iana_name_tables_match_db() {
+        for name in timezone_data::names() {
+            match name.split_once('/') {
+                None => assert!(IANA_FLAT_NAMES.contains(&name), "missing flat zone {name}"),
+                Some((area, _)) => assert!(IANA_AREAS.contains(&area), "missing area {area}"),
+            }
+        }
+        for name in IANA_FLAT_NAMES {
+            assert!(timezone_data::load(name).is_ok(), "stale flat zone {name}");
+        }
+        for area in IANA_AREAS {
+            assert!(
+                timezone_data::names().any(|n| n.split_once('/').is_some_and(|(a, _)| a == *area)),
+                "stale area {area}"
+            );
+        }
+    }
+
+    #[test]
+    fn iana_insensitive_lookup() {
+        for name in timezone_data::names() {
+            let mut buf = [0u8; 64];
+            let lower = &mut buf[..name.len()];
+            lower.copy_from_slice(name.as_bytes());
+            lower.make_ascii_lowercase();
+            let lower = core::str::from_utf8(lower).unwrap();
+            let z = load_iana_insensitive(lower).unwrap_or_else(|| panic!("{lower}"));
+            assert_eq!(z.name(), name);
+        }
+        assert!(load_iana_insensitive("days").is_none());
+        assert!(load_iana_insensitive("10/Oct/2000").is_none());
+    }
 }

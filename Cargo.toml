@@ -30,3 +30,8 @@ timezone-data = "0.2"
 unsafe_code = "forbid"
 # Keep internal items crate-private so only the documented API is exported.
 unreachable_pub = "warn"
+
+[[bench]]
+name = "corpus"
+harness = false
+required-features = ["iana"]

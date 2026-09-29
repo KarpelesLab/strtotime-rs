@@ -61,21 +61,21 @@ use crate::tz::Moment;
 /// "+2 days"); it is ignored for fully absolute inputs. Pass `0` (the epoch) if
 /// the expression is absolute.
 pub fn strtotime(input: &str, base_unix: i64, tz: Tz) -> Result<i64, Error> {
-    eval(input, Moment::new(base_unix, tz)).map(|m| m.unix)
+    eval(input, &Moment::new(base_unix, tz)).map(|m| m.unix)
 }
 
 /// Like [`strtotime`], but returns the resolved [`DateTime`] (broken-down civil
 /// fields plus the UTC offset and microsecond component) instead of a bare
 /// timestamp.
 pub fn strtotime_civil(input: &str, base_unix: i64, tz: Tz) -> Result<DateTime, Error> {
-    eval(input, Moment::new(base_unix, tz)).map(|m| m.wall())
+    eval(input, &Moment::new(base_unix, tz)).map(|m| m.wall())
 }
 
 /// Like [`strtotime`], but returns **microseconds** since the Unix epoch,
 /// retaining any sub-second fraction in the input (which whole-second
 /// [`strtotime`] discards, matching PHP's `strtotime()`).
 pub fn strtotime_micros(input: &str, base_unix: i64, tz: Tz) -> Result<i64, Error> {
-    eval(input, Moment::new(base_unix, tz)).map(|m| m.wall().unix_micros())
+    eval(input, &Moment::new(base_unix, tz)).map(|m| m.wall().unix_micros())
 }
 
 /// The current Unix timestamp from the system clock. Requires the `std` feature.
@@ -121,7 +121,7 @@ impl From<DateTime> for std::time::SystemTime {
 /// handler, keyword expressions, the ordered format pipeline, the
 /// date+relative / weekday-prefix / compound / ordinal-date fallbacks, and
 /// finally the token parser.
-fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
+fn eval(input: &str, base: &Moment) -> Result<Moment, Error> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err(Error::EmptyInput);
@@ -158,13 +158,16 @@ fn eval(input: &str, base: Moment) -> Result<Moment, Error> {
     }
 
     // Ordinal date ("26th Nov").
-    if let Some(m) = parsers::extended::parse_ordinal_date(trimmed, base) {
+    let mut fields = [""; parsers::extended::NF];
+    let nf = parsers::formats::collect_fields(trimmed, &mut fields);
+    if let Some(m) = parsers::extended::parse_ordinal_date(&fields[..nf], base) {
         return Ok(m);
     }
 
     // Token-based parser (relative expressions, weekdays, month names, times).
-    let toks = tokenizer::tokenize(trimmed)?;
-    let mut parser = parsers::token_parser::Parser::new(trimmed, toks.as_slice(), base);
+    let mut buf = [tokenizer::Token::EMPTY; tokenizer::MAX_TOKENS];
+    let toks = tokenizer::tokenize(trimmed, &mut buf)?;
+    let mut parser = parsers::token_parser::Parser::new(trimmed, toks, base);
     parser.parse()
 }
 
@@ -195,7 +198,7 @@ fn looks_like_date(s: &str) -> bool {
 
 /// Parse "DATE rest" where DATE is a recognized date and `rest` is a relative
 /// adjustment. Mirrors `parseDateWithRelativeTime` + `splitDateAndRest`.
-fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
+fn parse_date_with_relative_time(s: &str, base: &Moment) -> Option<Moment> {
     let sp = s.find(' ')?;
     let date_part = &s[..sp];
     let rest = s[sp + 1..].trim();
@@ -221,7 +224,7 @@ fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
 
     eval(
         rest,
-        Moment {
+        &Moment {
             unix: date.unix,
             tz: base.tz,
             micros: date.micros,
@@ -233,10 +236,10 @@ fn parse_date_with_relative_time(s: &str, base: Moment) -> Option<Moment> {
 /// Strip a leading weekday name and reparse the rest, advancing to the named
 /// weekday if it doesn't match. Mirrors `tryWeekdayPrefixReparse` +
 /// `stripWeekdayPrefix`.
-fn weekday_prefix_reparse(s: &str, base: Moment) -> Option<Moment> {
+fn weekday_prefix_reparse(s: &str, base: &Moment) -> Option<Moment> {
     let (rest, day_num) = strip_weekday_prefix(s)?;
     let rt = rest.trim();
-    let lower3 = |p: &str| rt.len() >= p.len() && rt[..p.len()].eq_ignore_ascii_case(p);
+    let lower3 = |p: &str| lookups::strip_prefix_ci(rt, p).is_some();
     if lower3("next ") || lower3("last ") || lower3("this ") {
         return None;
     }
@@ -268,15 +271,18 @@ pub(crate) fn strip_weekday_prefix(s: &str) -> Option<(&str, i64)> {
         ("saturday", 6),
     ];
     for (name, dn) in FULL {
-        if s.len() > name.len() && s[..name.len()].eq_ignore_ascii_case(name) {
-            let r = s[name.len()..].trim_start_matches([',', ' ']);
+        if let Some(r) = lookups::strip_prefix_ci(s, name)
+            && !r.is_empty()
+        {
+            let r = r.trim_start_matches([',', ' ']);
             if !r.is_empty() {
                 return Some((r, *dn));
             }
         }
     }
     if s.len() > 3
-        && let Some(dn) = lookups::day_of_week(&s[..3])
+        && let Some(abbr) = s.get(..3)
+        && let Some(dn) = lookups::day_of_week(abbr)
     {
         let r = s[3..].trim_start_matches([',', ' ']);
         if !r.is_empty() {
@@ -332,7 +338,7 @@ fn is_compound_expression(s: &str) -> bool {
 
 /// Evaluate a compound expression by chaining each `±part` onto the running
 /// result. Mirrors `parseCompoundExpression`.
-fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
+fn parse_compound(s: &str, base: &Moment) -> Result<Moment, Error> {
     let mut buf = [0u8; 512];
     let n = normalize_ops(s, &mut buf).ok_or(Error::TooLong)?;
     let nb = n.as_bytes();
@@ -362,7 +368,7 @@ fn parse_compound(s: &str, base: Moment) -> Result<Moment, Error> {
         }
         result = eval(
             &n[start..j],
-            Moment {
+            &Moment {
                 unix: result.unix,
                 tz: base.tz,
                 micros: result.micros,
@@ -428,7 +434,7 @@ pub(crate) fn frac_to_micros(frac_digits: &str) -> u32 {
 
 /// Handle the bare keyword expressions: now, today, midnight, tomorrow,
 /// yesterday, noon. Case-insensitive.
-fn try_keyword(s: &str, base: Moment) -> Option<Moment> {
+fn try_keyword(s: &str, base: &Moment) -> Option<Moment> {
     let day_at = |day_delta: i64, hour: i64| {
         let w = base.wall();
         let c = Civil::new(w.year, w.month as i64, w.day as i64 + day_delta, hour, 0, 0);
@@ -436,7 +442,7 @@ fn try_keyword(s: &str, base: Moment) -> Option<Moment> {
     };
 
     if s.eq_ignore_ascii_case("now") {
-        Some(base)
+        Some(*base)
     } else if s.eq_ignore_ascii_case("today") || s.eq_ignore_ascii_case("midnight") {
         Some(day_at(0, 0))
     } else if s.eq_ignore_ascii_case("tomorrow") {

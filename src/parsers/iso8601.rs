@@ -9,7 +9,11 @@ use crate::parsers::formats::{atoi, is_all_digits, mk, mk_frac, parse_iso, parse
 use crate::tz::{self, Moment, Tz};
 
 /// Entry point: try week date, then `T` datetime. Mirrors `parseISO8601`.
-pub(crate) fn parse_iso8601(s: &str, base: Moment) -> Option<Moment> {
+pub(crate) fn parse_iso8601(s: &str, base: &Moment) -> Option<Moment> {
+    // Both forms start with an all-digit year/date component.
+    if !s.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        return None;
+    }
     if let Some(m) = parse_iso_week_date(s, base) {
         return Some(m);
     }
@@ -17,20 +21,19 @@ pub(crate) fn parse_iso8601(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `<date>T<time>[offset]`. Mirrors `parseISO8601DateTime`.
-fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
+fn parse_iso8601_datetime(s: &str, base: &Moment) -> Option<Moment> {
     let b = s.as_bytes();
-    // Find a 'T'/'t' flanked by digits.
-    let mut t_idx = None;
-    let mut i = 1;
-    while i + 1 < b.len() {
-        if (b[i] == b't' || b[i] == b'T') && b[i - 1].is_ascii_digit() && b[i + 1].is_ascii_digit()
-        {
-            t_idx = Some(i);
-            break;
-        }
-        i += 1;
+    // The 'T'/'t' must be flanked by digits. The date part before it may only
+    // hold digits and '-' (checked below), so the separator can only sit right
+    // after the leading run of those.
+    let t_idx = b.iter().position(|c| !c.is_ascii_digit() && *c != b'-')?;
+    if t_idx == 0
+        || !matches!(b[t_idx], b't' | b'T')
+        || !b[t_idx - 1].is_ascii_digit()
+        || !b.get(t_idx + 1).is_some_and(u8::is_ascii_digit)
+    {
+        return None;
     }
-    let t_idx = t_idx?;
     let date_part = &s[..t_idx];
     let rest = &s[t_idx + 1..];
 
@@ -76,26 +79,21 @@ fn parse_iso8601_datetime(s: &str, base: Moment) -> Option<Moment> {
 }
 
 /// `YYYY-Www`, `YYYY-Www-D`, `YYYYWww`, `YYYYWwwD`. Mirrors `parseISOWeekDate`.
-fn parse_iso_week_date(s: &str, base: Moment) -> Option<Moment> {
+fn parse_iso_week_date(s: &str, base: &Moment) -> Option<Moment> {
     let b = s.as_bytes();
-    // Find 'w'/'W' preceded by a digit, or by '-' that is itself preceded by a digit.
-    let mut w_idx = None;
-    let mut i = 1;
-    while i < b.len() {
-        if b[i] == b'w' || b[i] == b'W' {
-            let prev = b[i - 1];
-            if prev.is_ascii_digit() {
-                w_idx = Some(i);
-                break;
-            }
-            if prev == b'-' && i >= 2 && b[i - 2].is_ascii_digit() {
-                w_idx = Some(i);
-                break;
-            }
-        }
-        i += 1;
+    // The 'W'/'w' follows the all-digit year, optionally with one '-' between.
+    let digits = b.iter().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 {
+        return None;
     }
-    let w_idx = w_idx?;
+    let w_idx = if b.get(digits) == Some(&b'-') {
+        digits + 1
+    } else {
+        digits
+    };
+    if !matches!(b.get(w_idx), Some(b'w' | b'W')) {
+        return None;
+    }
 
     let year_part = s[..w_idx].strip_suffix('-').unwrap_or(&s[..w_idx]);
     if !is_all_digits(year_part) {
